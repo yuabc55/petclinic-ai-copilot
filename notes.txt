@@ -1,0 +1,2 @@
+Project: Tiny tool-calling demo
+Purpose: Show an agent selecting two Python tools in sequence.
