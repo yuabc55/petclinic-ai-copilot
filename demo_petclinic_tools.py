@@ -3,14 +3,20 @@
 import json
 import os
 from urllib.error import HTTPError, URLError
+from urllib.parse import urlsplit
 from urllib.request import Request, urlopen
 
 from langchain_core.tools import tool
 
 
-BASE_URL = os.environ.get(
-    "PETCLINIC_BASE_URL", "http://localhost:9966/petclinic/api"
-).rstrip("/")
+configured_base_url = os.getenv("PETCLINIC_BASE_URL")
+if os.getenv("RAILWAY_PROJECT_ID"):
+    parsed = urlsplit(configured_base_url or "")
+    if (parsed.scheme not in ("http", "https") or not parsed.hostname
+            or parsed.hostname.lower() in ("localhost", "127.0.0.1", "::1")
+            or parsed.port is None):
+        raise RuntimeError("Set PETCLINIC_BASE_URL to the PetClinic Railway private URL and port.")
+BASE_URL = (configured_base_url or "http://localhost:9966/petclinic/api").rstrip("/")
 TIMEOUT_SECONDS = 5
 
 
