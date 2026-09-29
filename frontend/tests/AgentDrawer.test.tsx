@@ -85,6 +85,85 @@ describe('Agent Drawer', () => {
     await submit()
   }
 
+  it('contains keyboard focus and returns to the launcher on Escape', async () => {
+    await openDrawer()
+    const panel = container.querySelector<HTMLElement>('.agent-drawer')!
+    const first = container.querySelector<HTMLButtonElement>('[aria-label="New conversation"]')!
+    const input = container.querySelector<HTMLTextAreaElement>('textarea')!
+    expect(document.activeElement).toBe(input)
+    expect(panel.getAttribute('aria-modal')).toBe('true')
+    expect(container.querySelector('.main')?.hasAttribute('inert')).toBe(true)
+
+    first.focus()
+    await act(async () => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', shiftKey: true, cancelable: true })))
+    expect(document.activeElement).toBe(input)
+    await act(async () => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', cancelable: true })))
+    expect(document.activeElement).toBe(first)
+
+    await act(async () => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', cancelable: true })))
+    expect(container.querySelector('.agent-drawer')).toBeNull()
+    expect(document.activeElement).toBe(container.querySelector('.agent-launcher'))
+    expect(container.querySelector('.main')?.hasAttribute('inert')).toBe(false)
+  })
+
+  it('keeps an in-flight request when the drawer is closed and reopened', async () => {
+    let resolveFetch!: (response: Response) => void
+    fetchMock.mockImplementation(() => new Promise<Response>(resolve => { resolveFetch = resolve }))
+    await ask('Show pet 1')
+    expect(container.querySelector('.drawer-status')?.textContent).toContain('Processing request')
+    await act(async () => container.querySelector<HTMLButtonElement>('[aria-label="Close Agent sidebar"]')!.click())
+    await openDrawer()
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(container.querySelector<HTMLTextAreaElement>('textarea')?.disabled).toBe(true)
+    await act(async () => resolveFetch(streamResponse(completed('Pet query complete.'))))
+    await waitFor(() => container.textContent?.includes('Pet query complete.') === true)
+    expect(container.querySelector('.drawer-status')?.textContent).toContain('Ready to help')
+    expect(container.querySelector<HTMLDetailsElement>('.tool-copy')?.open).toBe(false)
+  })
+
+  it('focuses the pending approval and identifies a Reject submission', async () => {
+    let resolveResume!: (response: Response) => void
+    fetchMock.mockResolvedValueOnce(streamResponse(approvalRequired()))
+      .mockImplementationOnce(() => new Promise<Response>(resolve => { resolveResume = resolve }))
+    await ask('Cancel appointment 5')
+    await waitFor(() => container.querySelector('.approval-card') !== null)
+    const reject = container.querySelector<HTMLButtonElement>('.reject-button')!
+    expect(document.activeElement).toBe(reject)
+    expect(container.querySelector('.drawer-status')?.textContent).toContain('Waiting for your approval')
+    await act(async () => reject.click())
+    expect(reject.textContent).toBe('Rejecting…')
+    expect(container.querySelector('.approve-button')?.textContent).toContain('Approve')
+    expect(container.querySelector('.drawer-status')?.textContent).toContain('Submitting rejection')
+    await act(async () => resolveResume(new Response(JSON.stringify({ thread_id: threadId, status: 'completed', message: '取消未执行：人工拒绝。' }), { status: 200 })))
+    await waitFor(() => container.querySelector('.approval-card') === null)
+    expect(document.activeElement).toBe(container.querySelector('textarea'))
+  })
+
+  it('preserves a reader scroll position during SSE and follows again near the bottom', async () => {
+    let controller!: ReadableStreamDefaultController<Uint8Array>
+    const encoder = new TextEncoder()
+    fetchMock.mockResolvedValue(new Response(new ReadableStream<Uint8Array>({ start(value) { controller = value } }), {
+      status: 200, headers: { 'Content-Type': 'text/event-stream' },
+    }))
+    await ask('Show pet 1')
+    const area = container.querySelector<HTMLDivElement>('.conversation')!
+    Object.defineProperties(area, { scrollHeight: { value: 1000 }, clientHeight: { value: 200 } })
+    area.scrollTop = 0
+    await act(async () => area.dispatchEvent(new Event('scroll', { bubbles: true })))
+    await act(async () => controller.enqueue(encoder.encode(`event: tool_started\ndata: ${JSON.stringify({ thread_id: threadId, tool: 'get_pet', message: 'querying' })}\n\n`)))
+    await waitFor(() => container.querySelector('[data-activity-key="tool:get_pet"]') !== null)
+    expect(area.scrollTop).toBe(0)
+
+    area.scrollTop = 780
+    await act(async () => area.dispatchEvent(new Event('scroll', { bubbles: true })))
+    await act(async () => {
+      controller.enqueue(encoder.encode(`event: completed\ndata: ${JSON.stringify(completed('Pet details.').data)}\n\n`))
+      controller.close()
+    })
+    await waitFor(() => container.textContent?.includes('Pet details.') === true)
+    expect(area.scrollTop).toBeGreaterThan(780)
+  })
+
   it('renders a completed answer and hides an empty Sources section', async () => {
     fetchMock.mockResolvedValue(streamResponse(
       { event: 'started', data: { thread_id: threadId, message: 'working' } },

@@ -62,15 +62,22 @@ export function App() {
   const [restoring, setRestoring] = useState(() => readStoredThreadId() !== null)
   const [activitySteps, setActivitySteps] = useState<ActivityStep[]>(initial.approval ? [{ key: 'approval', text: '等待人工审批…', state: 'waiting' }] : [])
   const [error, setError] = useState<string | null>(null)
+  const [pendingDecision, setPendingDecision] = useState<'approve' | 'reject' | null>(null)
   const busyRef = useRef(false)
   const currentRequestRef = useRef('')
   const nextId = useRef(1)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const conversationRef = useRef<HTMLDivElement>(null)
+  const drawerRef = useRef<HTMLElement>(null)
+  const launcherRef = useRef<HTMLButtonElement>(null)
+  const returnFocusRef = useRef<HTMLElement | null>(null)
+  const followLatestRef = useRef(true)
 
   useEffect(() => {
-    if (drawerOpen && !restoring) inputRef.current?.focus()
-  }, [drawerOpen, restoring])
+    if (!drawerOpen || restoring || busy) return
+    const target = approval ? drawerRef.current?.querySelector<HTMLButtonElement>('.reject-button') : inputRef.current
+    target?.focus({ preventScroll: true })
+  }, [drawerOpen, restoring, busy, approval])
 
   useEffect(() => {
     if (isMockMode || !threadId) return
@@ -101,18 +108,52 @@ export function App() {
   }, [])
 
   useEffect(() => {
-    if (drawerOpen && conversationRef.current) {
+    if (drawerOpen && conversationRef.current && followLatestRef.current) {
       conversationRef.current.scrollTop = conversationRef.current.scrollHeight
     }
-  }, [messages, activitySteps, approval, busy, drawerOpen])
+  }, [messages, activitySteps, approval, busy, drawerOpen, error])
 
   useEffect(() => {
     if (!drawerOpen) return
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setDrawerOpen(false)
+    const panel = drawerRef.current
+    if (!panel) return
+    const focusable = () => Array.from(panel.querySelectorAll<HTMLElement>('button:not(:disabled), textarea:not(:disabled), a[href], summary, [tabindex="0"]')).filter(element => {
+      // A summary stays reachable when its own details is closed, unlike its content.
+      let parent = element.parentElement
+      while (parent && parent !== panel) {
+        if (parent instanceof HTMLDetailsElement && !parent.open
+          && !parent.querySelector(':scope > summary')?.contains(element)) return false
+        parent = parent.parentElement
+      }
+      return true
+    })
+    if (!panel.contains(document.activeElement)) (focusable()[0] ?? panel).focus({ preventScroll: true })
+    const handleKeyboard = (event: KeyboardEvent) => {
+      if (event.isComposing) return
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        setDrawerOpen(false)
+      }
+      if (event.key !== 'Tab') return
+      const items = focusable()
+      const first = items[0] ?? panel
+      const last = items.at(-1) ?? panel
+      const outside = !panel.contains(document.activeElement) || document.activeElement === panel
+      if (event.shiftKey && (document.activeElement === first || outside)) {
+        event.preventDefault()
+        last.focus()
+      } else if (!event.shiftKey && (document.activeElement === last || outside)) {
+        event.preventDefault()
+        first.focus()
+      }
     }
-    window.addEventListener('keydown', closeOnEscape)
-    return () => window.removeEventListener('keydown', closeOnEscape)
+    window.addEventListener('keydown', handleKeyboard)
+    return () => {
+      window.removeEventListener('keydown', handleKeyboard)
+      const target = returnFocusRef.current
+      if (target?.isConnected) target.focus({ preventScroll: true })
+      else launcherRef.current?.focus({ preventScroll: true })
+    }
   }, [drawerOpen])
 
   useEffect(() => {
@@ -139,6 +180,7 @@ export function App() {
     setActivitySteps([])
     setInput(draft)
     setError(null)
+    followLatestRef.current = true
     currentRequestRef.current = ''
     inputRef.current?.focus()
   }
@@ -217,6 +259,7 @@ export function App() {
     const message = input.trim()
     if (!message || busyRef.current || restoring || approval) return
     busyRef.current = true
+    followLatestRef.current = true
     currentRequestRef.current = message
     setInput('')
     setError(null)
@@ -244,6 +287,8 @@ export function App() {
   async function decide(decision: 'approve' | 'reject') {
     if (!threadId || busyRef.current || restoring) return
     busyRef.current = true
+    followLatestRef.current = true
+    setPendingDecision(decision)
     setBusy(true)
     setError(null)
     upsertActivity('resume', decision === 'approve' ? '正在执行操作…' : '正在提交拒绝决定…', 'running')
@@ -269,12 +314,25 @@ export function App() {
     } finally {
       busyRef.current = false
       setBusy(false)
+      setPendingDecision(null)
     }
   }
 
+  function openDrawer(event?: { currentTarget: EventTarget }) {
+    const target = event?.currentTarget ?? document.activeElement
+    returnFocusRef.current = target instanceof HTMLElement && target !== document.body ? target : null
+    followLatestRef.current = true
+    setDrawerOpen(true)
+  }
+
+  const workflowState = restoring ? 'restoring' : busy ? 'running' : error || activitySteps.some(step => step.state === 'error') ? 'error' : approval ? 'waiting' : 'ready'
+  const workflowLabel = restoring ? 'Restoring conversation…' : busy
+    ? pendingDecision === 'reject' ? 'Submitting rejection…' : pendingDecision === 'approve' ? 'Applying approved action…' : 'Processing request…'
+    : error || activitySteps.some(step => step.state === 'error') ? 'Needs attention' : approval ? 'Waiting for your approval' : 'Ready to help'
+
   return (
     <div className="app-shell">
-      <aside className="sidebar">
+      <aside className="sidebar" inert={drawerOpen} aria-hidden={drawerOpen || undefined}>
         <button className="brand" onClick={() => setPage('Dashboard')} aria-label="PetClinic dashboard">
           <span className="brand-mark">✳</span>
           <span className="brand-copy"><strong>petclinic</strong><small>CONSOLE</small></span>
@@ -292,25 +350,25 @@ export function App() {
         <div className="sidebar-bottom">
           <div className="sidebar-agent-mark">✳</div>
           <div><strong>PetClinic Agent</strong><span>Available in your workspace</span></div>
-          <button className="sidebar-agent-button" onClick={() => setDrawerOpen(true)} aria-label="Open Agent from navigation"><Icon size={17}><path d="m9 18 6-6-6-6"/></Icon></button>
+          <button className="sidebar-agent-button" onClick={openDrawer} aria-label="Open Agent from navigation"><Icon size={17}><path d="m9 18 6-6-6-6"/></Icon></button>
         </div>
       </aside>
 
-      <main className="main">
+      <main className="main" inert={drawerOpen} aria-hidden={drawerOpen || undefined}>
         <header className="topbar">
           <div className="breadcrumb">Workspace <Icon size={14}><path d="m9 18 6-6-6-6"/></Icon><strong>{page}</strong></div>
           <div className="topbar-right"><span className="topbar-label">PETCLINIC CONSOLE</span><span className="topbar-avatar">PC</span></div>
         </header>
         <div className="content">
-          {page === 'Dashboard' ? <Dashboard onOpenAgent={() => setDrawerOpen(true)} onSelectPage={setPage} /> : <SectionPlaceholder page={page} onOpenAgent={() => setDrawerOpen(true)} />}
+          {page === 'Dashboard' ? <Dashboard onOpenAgent={openDrawer} onSelectPage={setPage} /> : <SectionPlaceholder page={page} onOpenAgent={openDrawer} />}
         </div>
       </main>
 
-      {!drawerOpen && <button className="agent-launcher" onClick={() => setDrawerOpen(true)} aria-label="Open Agent sidebar"><span>✳</span> Ask Agent <Icon size={16}><path d="m5 12h14m-6-6 6 6-6 6"/></Icon></button>}
+      {!drawerOpen && <button ref={launcherRef} className="agent-launcher" onClick={openDrawer} aria-label="Open Agent sidebar"><span>✳</span> Ask Agent <Icon size={16}><path d="m5 12h14m-6-6 6 6-6 6"/></Icon></button>}
 
       {drawerOpen && <>
-        <div className="drawer-backdrop" onClick={() => setDrawerOpen(false)} />
-        <aside className="agent-drawer" aria-label="Agent sidebar">
+        <div className="drawer-backdrop" onClick={() => setDrawerOpen(false)} aria-hidden="true" />
+        <aside ref={drawerRef} className="agent-drawer" role="dialog" aria-modal="true" aria-label="Agent sidebar" tabIndex={-1}>
           <header className="drawer-header">
             <div className="agent-icon">✳</div>
             <div className="drawer-title"><span>YOUR ASSISTANT</span><strong>PetClinic Agent</strong></div>
@@ -320,9 +378,9 @@ export function App() {
             </div>
           </header>
 
-          <div className="drawer-status"><span className="status-dot"/><span>{restoring ? 'Restoring conversation…' : 'Ready to help'}</span><span className="mode-badge">{isMockMode ? 'Preview mode' : 'Agent API'}</span></div>
+          <div className={`drawer-status ${workflowState}`}><span className="status-dot"/><span>{workflowLabel}</span><span className="mode-badge">{isMockMode ? 'Preview mode' : 'Agent API'}</span></div>
 
-          <div className="conversation" ref={conversationRef} role="log" aria-live="polite">
+          <div className="conversation" ref={conversationRef} role="log" aria-live="polite" onScroll={event => { const area = event.currentTarget; followLatestRef.current = area.scrollHeight - area.scrollTop - area.clientHeight < 80 }}>
             <div className="conversation-label"><span/>CONVERSATION<span/></div>
             {messages.map(message => (
               <div className={`message-row ${message.role}`} key={message.id}>
@@ -336,9 +394,9 @@ export function App() {
 
             {messages.length === 1 && !approval && !restoring && <div className="prompt-starters"><span>START WITH A PROMPT</span>{['Show pet ', 'Show appointment ', 'Cancel appointment '].map(prompt => <button key={prompt} onClick={() => { setInput(prompt); inputRef.current?.focus() }}>{prompt.trim()} <Icon size={15}><path d="m5 12h14m-6-6 6 6-6 6"/></Icon></button>)}</div>}
 
-            {activitySteps.length > 0 && <div className="tool-card" role="status" aria-label="Agent activity"><div className="tool-icon"><Icon size={17}><rect x="4" y="4" width="16" height="16" rx="3"/><path d="M8 10h8M8 14h5"/></Icon></div><div className="tool-copy"><span>TOOL ACTIVITY</span><div className="activity-list">{activitySteps.map((step, index) => <div className={`activity-step ${step.state}`} data-activity-key={step.key} key={index}><span className="activity-mark">{step.state === 'running' ? <span className="spinner"/> : step.state === 'done' ? '✓' : step.state === 'waiting' ? '·' : '!'}</span><strong>{step.text}</strong></div>)}</div></div></div>}
+            {activitySteps.length > 0 && <ActivityTimeline steps={activitySteps} busy={busy} />}
 
-            {approval && <ApprovalCard approval={approval} busy={busy || restoring} onDecision={decide} />}
+            {approval && <ApprovalCard approval={approval} busy={busy || restoring} pendingDecision={pendingDecision} onDecision={decide} />}
             {error && <div className="error-banner" role="alert"><strong>Unable to complete the request</strong><span>{error}</span></div>}
           </div>
 
@@ -356,48 +414,64 @@ export function App() {
   )
 }
 
+function ActivityTimeline({ steps, busy }: { steps: ActivityStep[]; busy: boolean }) {
+  const attention = steps.some(step => step.state === 'error')
+  const waiting = steps.some(step => step.state === 'waiting')
+  const settled = !busy && !waiting && !attention
+  const current = steps.find(step => step.state === 'running')
+  const summary = busy ? current?.text ?? '正在处理请求…' : attention ? '执行需要关注' : waiting ? '等待人工审批…' : '执行已结束'
+  return <div className={`tool-card${settled ? ' settled' : ''}`} role="status" aria-label="Agent activity">
+    <div className="tool-icon"><Icon size={17}><rect x="4" y="4" width="16" height="16" rx="3"/><path d="M8 10h8M8 14h5"/></Icon></div>
+    <details className="tool-copy" open={!settled}>
+      <summary className="activity-summary"><span>TOOL ACTIVITY</span><strong>{summary}</strong><small>{steps.length} steps</small></summary>
+      <div className="activity-list">{steps.map(step => <div className={`activity-step ${step.state}`} data-activity-key={step.key} key={step.key}><span className="activity-mark">{step.state === 'running' ? <span className="spinner"/> : step.state === 'done' ? '✓' : step.state === 'waiting' ? '·' : '!'}</span><strong>{step.text}</strong></div>)}</div>
+    </details>
+  </div>
+}
+
 function Sources({ sources }: { sources: AgentSource[] }) {
   const [featured, ...additional] = sources
   return <section className="sources-block" aria-label="Sources">
     <div className="sources-heading">Sources <span>{sources.length}</span></div>
-    <SourceCard source={featured} expanded={sources.length === 1} />
+    <SourceCard source={featured} />
     {additional.length > 0 && <details className="sources-more"><summary>View {additional.length} more {additional.length === 1 ? 'source' : 'sources'}</summary><div className="sources-more-list">{additional.map((source, index) => <SourceCard key={`${source.title}-${source.section}-${index}`} source={source} />)}</div></details>}
   </section>
 }
 
-function SourceCard({ source, expanded = false }: { source: AgentSource; expanded?: boolean }) {
+function SourceCard({ source }: { source: AgentSource }) {
   return <article className="source-item">
     <strong>{source.title}</strong><span>{source.section}</span>
-    <details className="source-excerpt" open={expanded}><summary>{expanded ? 'Excerpt' : 'Read excerpt'}</summary><p>{source.snippet}</p></details>
+    <details className="source-excerpt"><summary>Read excerpt</summary><p>{source.snippet}</p></details>
   </article>
 }
 
-function ApprovalCard({ approval, busy, onDecision }: { approval: Approval; busy: boolean; onDecision: (decision: 'approve' | 'reject') => void }) {
+function ApprovalCard({ approval, busy, pendingDecision, onDecision }: { approval: Approval; busy: boolean; pendingDecision: 'approve' | 'reject' | null; onDecision: (decision: 'approve' | 'reject') => void }) {
   const action = approval.action.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')
-  return <div className="approval-card">
+  return <div className="approval-card" aria-labelledby="approval-title" aria-describedby="approval-description">
     <div className="approval-top"><div className="approval-symbol"><Icon size={18}><path d="M12 3 3 7v5c0 5 3.5 8 9 9 5.5-1 9-4 9-9V7l-9-4Z"/><path d="M12 8v5M12 16h.01"/></Icon></div><span>YOUR DECISION NEEDED</span></div>
-    <h3>{action} #{approval.appointmentId}</h3>
-    <p>The Agent has paused before making this change.</p>
-    <div className="approval-details"><div><span>Current status</span><strong>{approval.status}</strong></div><div><span>Version</span><strong>{approval.expectedVersion}</strong></div></div>
-    <div className="approval-actions"><button className="reject-button" disabled={busy} onClick={() => onDecision('reject')}>Reject</button><button className="approve-button" disabled={busy} onClick={() => onDecision('approve')}>{busy ? 'Working…' : 'Approve'} <Icon size={15}><path d="m5 12 4 4L19 6"/></Icon></button></div>
+    <h3 id="approval-title">{action} #{approval.appointmentId}</h3>
+    <p id="approval-description">{approval.action === 'cancel_appointment' ? 'Approve to authorize cancellation. Reject to keep the appointment unchanged.' : 'Review this action before authorizing the Agent to proceed.'}</p>
+    <div className="approval-details"><div><span>Current status</span><strong>{approval.status}</strong></div><div><span>Expected version</span><strong>{approval.expectedVersion}</strong></div><div className="approval-action-field"><span>Requested action</span><code>{approval.action}</code></div></div>
+    <p className="approval-audit-note">The displayed version is used for this decision. A changed record can cause a conflict.</p>
+    <div className="approval-actions"><button type="button" className="reject-button" disabled={busy} onClick={() => onDecision('reject')}>{pendingDecision === 'reject' ? 'Rejecting…' : 'Reject'}</button><button type="button" className="approve-button" disabled={busy} onClick={() => onDecision('approve')}>{pendingDecision === 'approve' ? 'Approving…' : 'Approve'}</button></div>
   </div>
 }
 
 function Dashboard({ onOpenAgent, onSelectPage }: { onOpenAgent: () => void; onSelectPage: (page: Page) => void }) {
   return <>
-    <div className="page-heading"><div><span className="eyebrow">WORKSPACE OVERVIEW</span><h1>Clinic overview</h1><p>A calm place to start, with your Agent one click away.</p></div><span className="page-badge"><span/> PETCLINIC WORKSPACE</span></div>
+    <div className="page-heading"><div><span className="eyebrow">PETCLINIC WORKSPACE</span><h1>Console overview</h1><p>Look up clinic records and review Agent actions.</p></div><span className="page-badge"><span aria-hidden="true" />COPILOT WORKSPACE</span></div>
 
     <section className="hero">
-      <div className="hero-copy"><span className="hero-kicker">INTRODUCING YOUR COPILOT</span><h2>Focus on care.<br /><em>Let the details flow.</em></h2><p>Find pet and appointment information in one conversation. When a change is requested, you stay in control.</p><button onClick={onOpenAgent}>Open PetClinic Agent <Icon size={18}><path d="m5 12h14m-6-6 6 6-6 6"/></Icon></button></div>
-      <div className="hero-flow" aria-label="Agent workflow"><div className="flow-heading"><span className="flow-brand">✳</span><span>HOW IT WORKS</span></div><div className="flow-step"><span className="flow-number">01</span><div><strong>Ask a question</strong><small>Pets and appointments, in plain language.</small></div></div><div className="flow-step"><span className="flow-number">02</span><div><strong>See the work</strong><small>Follow the Agent’s activity as it checks details.</small></div></div><div className="flow-step"><span className="flow-number">03</span><div><strong>Approve changes</strong><small>You decide before an appointment is changed.</small></div></div></div>
+      <div className="hero-copy"><span className="hero-kicker">AGENT WORKSPACE</span><h2>PetClinic Copilot</h2><p>Query records, check clinic policies, and review appointment changes before they run.</p><button onClick={onOpenAgent}>Open PetClinic Agent <Icon size={18}><path d="m5 12h14m-6-6 6 6-6 6"/></Icon></button></div>
+      <div className="hero-flow" aria-label="Agent workflow"><div className="flow-heading"><span className="flow-brand">✳</span><span>WORKFLOW</span></div><div className="flow-step"><span className="flow-number">01</span><div><strong>Query</strong><small>Find pet and appointment information.</small></div></div><div className="flow-step"><span className="flow-number">02</span><div><strong>Review</strong><small>Follow tool activity and policy sources.</small></div></div><div className="flow-step"><span className="flow-number">03</span><div><strong>Decide</strong><small>Approve or reject proposed changes.</small></div></div></div>
     </section>
 
-    <div className="section-heading"><div><h2>Explore your workspace</h2><p>Go to a section or ask the Agent to help with a specific record.</p></div></div>
+    <div className="section-heading"><div><h2>Clinic sections</h2><p>Dedicated pages are coming next. Use the Agent for pet and appointment queries.</p></div></div>
     <div className="workspace-grid">
-      {navigation.filter(item => item.label !== 'Dashboard').map(item => <button className="workspace-card" key={item.label} onClick={() => onSelectPage(item.label)}><span className="workspace-card-icon"><Icon size={22}>{item.icon}</Icon></span><span className="workspace-card-copy"><strong>{item.label}</strong><small>{item.description}</small></span><Icon size={18}><path d="m5 12h14m-6-6 6 6-6 6"/></Icon></button>)}
+      {navigation.filter(item => item.label !== 'Dashboard').map(item => <button className="workspace-card" key={item.label} onClick={() => onSelectPage(item.label)}><span className="workspace-card-icon"><Icon size={22}>{item.icon}</Icon></span><span className="workspace-card-copy"><strong>{item.label}</strong><small>{item.description}</small><span className="workspace-card-note">Page coming soon</span></span><Icon size={18}><path d="m5 12h14m-6-6 6 6-6 6"/></Icon></button>)}
     </div>
 
-    <section className="info-panel"><div className="info-icon"><Icon size={22}><path d="M12 3 3 7v5c0 5 3.5 8 9 9 5.5-1 9-4 9-9V7l-9-4Z"/><path d="m9 12 2 2 4-4"/></Icon></div><div><strong>Built for decisions that matter</strong><p>PetClinic Agent can look up information and prepare an appointment change. The final decision is always yours.</p></div></section>
+    <section className="info-panel"><div className="info-icon"><Icon size={22}><path d="M12 3 3 7v5c0 5 3.5 8 9 9 5.5-1 9-4 9-9V7l-9-4Z"/><path d="m9 12 2 2 4-4"/></Icon></div><div><strong>Changes require your decision</strong><p>The Agent pauses for human approval before cancelling an appointment. Review the record and its version before proceeding.</p></div></section>
   </>
 }
 
