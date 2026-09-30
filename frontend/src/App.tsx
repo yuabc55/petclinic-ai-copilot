@@ -139,6 +139,7 @@ export function App() {
   const conversationRef = useRef<HTMLDivElement>(null)
   const drawerRef = useRef<HTMLElement>(null)
   const launcherRef = useRef<HTMLButtonElement>(null)
+  const mascotDockRef = useRef<HTMLDivElement>(null)
   const returnFocusRef = useRef<HTMLElement | null>(null)
   const followLatestRef = useRef(true)
 
@@ -230,6 +231,26 @@ export function App() {
     document.body.style.overflow = 'hidden'
     return () => { document.body.style.overflow = previous }
   }, [drawerOpen])
+
+  useEffect(() => {
+    if (!mascotMenuOpen || drawerOpen) return
+    mascotDockRef.current?.querySelector<HTMLButtonElement>('.mascot-open-agent')?.focus({ preventScroll: true })
+    const dismiss = (event: PointerEvent) => {
+      if (!mascotDockRef.current?.contains(event.target as Node)) setMascotMenuOpen(false)
+    }
+    const escape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return
+      event.preventDefault()
+      setMascotMenuOpen(false)
+      launcherRef.current?.focus({ preventScroll: true })
+    }
+    document.addEventListener('pointerdown', dismiss)
+    window.addEventListener('keydown', escape)
+    return () => {
+      document.removeEventListener('pointerdown', dismiss)
+      window.removeEventListener('keydown', escape)
+    }
+  }, [mascotMenuOpen, drawerOpen])
 
   function addMessage(role: ChatMessage['role'], text: string) {
     setMessages(current => [...current, { id: nextId.current++, role, text }])
@@ -448,7 +469,7 @@ export function App() {
 
       {/* DR. CLEO MASCOT DOCK WITH QUICK ACTIONS & FULL DRAWER LAUNCHER */}
       {!drawerOpen && (
-        <div className="mascot-dock">
+        <div ref={mascotDockRef} className="mascot-dock">
           {mascotMenuOpen && (
             <div className="mascot-popover" role="dialog" aria-label="Dr. Cleo Quick Actions">
               <div className="mascot-popover-header">
@@ -456,10 +477,14 @@ export function App() {
                   <PawIcon size={14} />
                   <span>Dr. Cleo · Quick Actions</span>
                 </div>
-                <button className="mascot-close-btn" onClick={() => setMascotMenuOpen(false)} aria-label="Close Quick Actions">✕</button>
+                <button className="mascot-close-btn" onClick={() => { setMascotMenuOpen(false); launcherRef.current?.focus({ preventScroll: true }) }} aria-label="Close Quick Actions">✕</button>
               </div>
               <p>Select a quick inquiry or open full copilot conversation:</p>
               <div className="mascot-prompts">
+                <button className="mascot-prompt-btn mascot-open-agent" onClick={openDrawer}>
+                  <span>Open Agent conversation</span>
+                  <Icon size={14}><path d="m9 18 6-6-6-6"/></Icon>
+                </button>
                 <button className="mascot-prompt-btn" onClick={() => triggerPrompt('Show pet ')}>
                   <span>🐾 Look up a pet — enter an ID</span>
                   <Icon size={14}><path d="m9 18 6-6-6-6"/></Icon>
@@ -476,18 +501,19 @@ export function App() {
             </div>
           )}
 
-          {/* Primary trigger button holding .agent-launcher for full Vitest test suite compatibility */}
+          {/* Primary Dr. Cleo trigger; the Agent opens from its Quick Actions. */}
           <button
             ref={launcherRef}
             className="agent-launcher"
-            onClick={openDrawer}
-            onContextMenu={e => { e.preventDefault(); setMascotMenuOpen(!mascotMenuOpen) }}
+            onClick={() => setMascotMenuOpen(value => !value)}
             aria-label="Open Agent sidebar"
+            aria-expanded={mascotMenuOpen}
+            aria-haspopup="dialog"
           >
             <span className="mascot-face-wrap"><DrCleoAvatar size={34} /></span>
             <span className="mascot-label">
               <strong>Ask Dr. Cleo</strong>
-              <small>Click to chat · Right-click quick actions</small>
+              <small>Clinic quick actions</small>
             </span>
             <Icon size={16}><path d="m5 12h14m-6-6 6 6-6 6"/></Icon>
           </button>
@@ -601,10 +627,12 @@ function ApprovalCard({ approval, busy, pendingDecision, onDecision }: { approva
 /* ========================================================================= */
 /* INTERACTIVE EDITORIAL PETCLINIC POSTER COMPONENT                          */
 /* ========================================================================= */
-function SceneHotspot({ position, label, title, icon, actions }: {
+function SceneHotspot({ position, label, title, subtitle, description, icon, actions }: {
   position: { top: string; left: string }
   label: string
   title: string
+  subtitle?: string
+  description: string
   icon: ReactNode
   actions: { label: string; run: () => void }[]
 }) {
@@ -622,7 +650,7 @@ function SceneHotspot({ position, label, title, icon, actions }: {
     document.addEventListener('pointerdown', dismiss)
     return () => document.removeEventListener('pointerdown', dismiss)
   }, [open])
-  return <div ref={wrapperRef} className={`scene-hotspot-wrap${open ? ' is-open' : ''}`} style={position}
+  return <div ref={wrapperRef} className={`scene-hotspot-wrap${subtitle ? ' knowledge-hotspot' : ''}${open ? ' is-open' : ''}`} style={position}
     onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setOpen(false) }}
     onKeyDown={event => {
       if (event.key === 'Escape' && open) {
@@ -634,8 +662,8 @@ function SceneHotspot({ position, label, title, icon, actions }: {
     }}>
     <button ref={triggerRef} className="hotspot-btn" aria-label={label} aria-expanded={open} aria-controls={open ? panelId : undefined} onClick={() => setOpen(value => !value)}>
       <span className="hotspot-ring">{icon}</span>
-      <span className="hotspot-label">{title}</span>
-      <span className="hotspot-tooltip" aria-hidden="true"><strong>{title}</strong><span>Choose a quick action. Record IDs are entered in the Agent.</span></span>
+      <span className="hotspot-label"><strong>{title}</strong>{subtitle && <small>{subtitle}</small>}</span>
+      <span className="hotspot-tooltip" aria-hidden="true"><strong>{title}</strong><span>{description}</span></span>
     </button>
     {open && <div id={panelId} ref={panelRef} className="scene-quick-actions" role="group" aria-label={`${title} quick actions`}>
       <span>{title}</span>
@@ -683,162 +711,24 @@ function EditorialPoster({
 
         {/* Cinematic Sunset Illustration Scene */}
         <div className="poster-canvas">
-          <svg className="poster-svg-stage" viewBox="0 0 1000 520" fill="none" preserveAspectRatio="xMidYMid meet" role="img" aria-label="A veterinarian, a golden cat and a cream dog share a warmly lit clinic">
-            <defs>
-              {/* Sunset Ambient Gradient */}
-              <radialGradient id="sunsetBeam" cx="72%" cy="25%" r="65%">
-                <stop offset="0%" stopColor="#FDE1A9" stopOpacity="0.45" />
-                <stop offset="40%" stopColor="#DE9E46" stopOpacity="0.22" />
-                <stop offset="100%" stopColor="#1E130B" stopOpacity="0" />
-              </radialGradient>
-              {/* Arched Window Gradient */}
-              <linearGradient id="windowGlow" x1="0%" y1="0%" x2="100%" y2="100%">
-                <stop offset="0%" stopColor="#FFF2D6" />
-                <stop offset="60%" stopColor="#E9B96E" />
-                <stop offset="100%" stopColor="#9C6228" />
-              </linearGradient>
-              {/* Mahogany Table Surface */}
-              <linearGradient id="woodDesk" x1="0%" y1="0%" x2="0%" y2="100%">
-                <stop offset="0%" stopColor="#6E4426" />
-                <stop offset="25%" stopColor="#4A2E1A" />
-                <stop offset="100%" stopColor="#25160C" />
-              </linearGradient>
-              {/* Golden Shaded Cat Coat */}
-              <linearGradient id="goldenCatGrad" x1="20%" y1="10%" x2="80%" y2="90%">
-                <stop offset="0%" stopColor="#F9D490" />
-                <stop offset="60%" stopColor="#D99742" />
-                <stop offset="100%" stopColor="#824E19" />
-              </linearGradient>
-              {/* Cream Retriever Pup Fur */}
-              <linearGradient id="creamPupGrad" x1="30%" y1="10%" x2="70%" y2="90%">
-                <stop offset="0%" stopColor="#FFF7EB" />
-                <stop offset="50%" stopColor="#EAD8BE" />
-                <stop offset="100%" stopColor="#BFA582" />
-              </linearGradient>
-              {/* Doctor Linen Coat */}
-              <linearGradient id="linenCoat" x1="0%" y1="0%" x2="100%" y2="100%">
-                <stop offset="0%" stopColor="#FAF5EE" />
-                <stop offset="70%" stopColor="#D8CDBC" />
-                <stop offset="100%" stopColor="#9E907B" />
-              </linearGradient>
-            </defs>
-
-            {/* Room Architecture: Sunset Wall & Golden Beam */}
-            {/* Transparent architecture lets the lighting continue into the navigation. */}
-            <circle cx="720" cy="140" r="380" fill="url(#sunsetBeam)" />
-
-            {/* Arched Clinic Window */}
-            <path d="M680 40 Q760 0 840 40 V300 H680 Z" fill="#2D1D13" stroke="#B8863B" strokeWidth="2" />
-            <path d="M688 48 Q760 12 832 48 V292 H688 Z" fill="url(#windowGlow)" opacity="0.3" />
-            {/* Window Muntins & Warm Rays */}
-            <line x1="760" y1="12" x2="760" y2="292" stroke="#4A2F1C" strokeWidth="3" />
-            <line x1="688" y1="140" x2="832" y2="140" stroke="#4A2F1C" strokeWidth="2.5" />
-            <line x1="688" y1="210" x2="832" y2="210" stroke="#4A2F1C" strokeWidth="2" />
-            {/* Sunlight Ray Shafts */}
-            <polygon points="760,140 920,480 320,480 720,140" fill="#FFE2A4" opacity="0.08" />
-
-            {/* Consultation Desk (Mahogany Surface) */}
-            <polygon points="120,380 960,380 900,520 60,520" fill="url(#woodDesk)" />
-            <line x1="120" y1="380" x2="960" y2="380" stroke="#DDA85B" strokeWidth="2" opacity="0.6" />
-
-            {/* ======================================================== */}
-            {/* FIGURE 1: THE VETERINARIAN           */}
-            {/* ======================================================== */}
-            <g id="figure-vet" className="scene-hotspot-group">
-              {/* Doctor Torso & Linen Scrubs Coat */}
-              <path d="M200 480 Q210 320 280 290 Q340 300 370 480 Z" fill="url(#linenCoat)" />
-              {/* Stethoscope around neck */}
-              <path d="M260 330 C250 370 260 410 285 430 C310 440 325 410 320 370 C315 340 305 320 300 320" stroke="#3D5A6C" strokeWidth="4" fill="none" strokeLinecap="round" />
-              <circle cx="285" cy="435" r="7" fill="#C99A4A" stroke="#FFF" strokeWidth="1.5" />
-              {/* Doctor Head & Neck */}
-              <path d="M275 295 L275 260 Q275 250 285 245 L300 245 Q310 250 310 260 L310 295 Z" fill="#D8A579" />
-              {/* Head Profile & Kind Hair Knot */}
-              <ellipse cx="292" cy="220" rx="26" ry="32" fill="#D8A579" />
-              <path d="M265 210 Q280 170 320 190 Q325 210 320 235 Q300 215 270 230 Z" fill="#4A2612" />
-              <circle cx="316" cy="188" r="14" fill="#3D1E0C" />
-              {/* Clipboard in hand */}
-              <rect x="330" y="360" width="60" height="85" rx="5" fill="#C9A066" transform="rotate(-12 330 360)" />
-              <rect x="338" y="375" width="44" height="60" rx="2" fill="#FFFBF5" transform="rotate(-12 338 375)" />
-            </g>
-
-            {/* ======================================================== */}
-            {/* FIGURE 2: THE GOLDEN SHADED CAT (Sunlit on Desk)         */}
-            {/* ======================================================== */}
-            <g id="figure-cat" className="scene-hotspot-group">
-              {/* Cat Body Lying Down */}
-              <path d="M440 380 Q430 310 500 300 Q580 295 620 340 Q630 380 570 385 Z" fill="url(#goldenCatGrad)" />
-              {/* Curled Tail draping over desk edge */}
-              <path d="M610 360 C640 375 660 410 650 440 C640 465 615 460 610 440" stroke="url(#goldenCatGrad)" strokeWidth="14" strokeLinecap="round" fill="none" />
-              {/* Cat Paws stretched gently */}
-              <ellipse cx="445" cy="380" rx="18" ry="10" fill="#FFF2DC" />
-              <ellipse cx="480" cy="383" rx="16" ry="9" fill="#FFF2DC" />
-              {/* Cat Head */}
-              <ellipse cx="450" cy="315" rx="30" ry="26" fill="url(#goldenCatGrad)" />
-              <ellipse cx="450" cy="322" rx="20" ry="16" fill="#FFF8EE" />
-              {/* Pointed Cat Ears */}
-              <polygon points="430,300 415,265 445,285" fill="#D49944" />
-              <polygon points="426,296 420,274 440,287" fill="#FCE8D3" />
-              <polygon points="465,285 488,265 475,300" fill="#D49944" />
-              <polygon points="468,287 482,274 474,296" fill="#FCE8D3" />
-              {/* Green-Gold Eyes (Gentle Gaze) */}
-              <ellipse cx="440" cy="315" rx="4" ry="5" fill="#3D7D54" />
-              <circle cx="439" cy="313" r="1.5" fill="#FFF" />
-              <ellipse cx="462" cy="315" rx="4" ry="5" fill="#3D7D54" />
-              <circle cx="461" cy="313" r="1.5" fill="#FFF" />
-              {/* Whiskers in Sunbeam */}
-              <path d="M430 326 L395 320 M430 329 L390 330 M430 333 L395 338" stroke="#FFE9C7" strokeWidth="1.6" strokeLinecap="round" />
-              <path d="M472 326 L508 320 M472 329 L512 330 M472 333 L508 338" stroke="#FFE9C7" strokeWidth="1.6" strokeLinecap="round" />
-            </g>
-
-            {/* ======================================================== */}
-            {/* FIGURE 3: THE CREAM PUPPY (Loyally Sitting Beside Table) */}
-            {/* ======================================================== */}
-            <g id="figure-dog" className="scene-hotspot-group">
-              {/* Dog Body Sitting Attentively */}
-              <path d="M720 520 Q700 370 780 340 Q850 350 860 520 Z" fill="url(#creamPupGrad)" />
-              {/* Dog Head Tilted Toward Vet & Cat */}
-              <ellipse cx="760" cy="330" rx="36" ry="42" fill="url(#creamPupGrad)" />
-              {/* Soft Floppy Ear */}
-              <path d="M724 315 C710 335 705 380 725 400 C735 410 745 390 740 360 Z" fill="#D2BBA0" />
-              <path d="M790 315 C805 335 815 375 805 395 C795 405 785 385 788 355 Z" fill="#D2BBA0" />
-              {/* Dog Muzzle & Nose */}
-              <ellipse cx="756" cy="346" rx="20" ry="18" fill="#FFF8EE" />
-              <ellipse cx="756" cy="338" rx="8" ry="6" fill="#3A2213" />
-              {/* Loyal Dark Eyes */}
-              <ellipse cx="742" cy="324" rx="4.5" ry="5.5" fill="#2E1B0E" />
-              <circle cx="740" cy="322" r="1.5" fill="#FFF" />
-              <ellipse cx="772" cy="324" rx="4.5" ry="5.5" fill="#2E1B0E" />
-              <circle cx="770" cy="322" r="1.5" fill="#FFF" />
-              {/* Leather Collar with Golden Brass Tag */}
-              <path d="M730 385 Q760 400 790 385" stroke="#7A3920" strokeWidth="6" strokeLinecap="round" />
-              <circle cx="760" cy="402" r="6" fill="#DDBB7A" stroke="#FFF" strokeWidth="1" />
-            </g>
-
-            {/* ======================================================== */}
-            {/* DESK ACCESSORIES: Amber Lamp & Stethoscope               */}
-            {/* ======================================================== */}
-            {/* Amber Desk Lamp */}
-            <path d="M880 380 L880 250 L840 290" stroke="#C99A4A" strokeWidth="5" strokeLinecap="round" />
-            <path d="M820 300 Q850 270 870 300 Z" fill="#D48A2C" />
-            <circle cx="845" cy="305" r="18" fill="#FFEAA8" opacity="0.35" />
-          </svg>
+          <div className="poster-scene-description" role="img" aria-label="A veterinarian, a golden cat and a cream dog share a warmly lit clinic" />
 
           {/* ======================================================== */}
           {/* INTERACTIVE HOTSPOT PINS & FLOATING TOOLTIPS             */}
           {/* ======================================================== */}
-          <SceneHotspot position={{ top: '55%', left: '50%' }} label="Cat hotspot: Explore Patient Registry and pet profiles" title="Cat · Pet records" icon={<PawIcon size={16} />} actions={[
+          <SceneHotspot position={{ top: '57%', left: '43%' }} label="Cat hotspot: Explore Patient Registry and pet profiles" title="Cat · Pet records" description="Look up a pet or open the Pets workspace." icon={<PawIcon size={16} />} actions={[
             { label: 'Look up a pet', run: () => onTriggerPrompt('Show pet ') },
             { label: 'Open Pets workspace', run: () => onSelectPage('Pets') },
           ]} />
-          <SceneHotspot position={{ top: '67%', left: '77%' }} label="Dog hotspot: Explore Appointments and safe cancellation" title="Dog · Appointments" icon={<Icon size={16}><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M7 3v4M17 3v4M3 10h18"/></Icon>} actions={[
+          <SceneHotspot position={{ top: '60%', left: '76%' }} label="Dog hotspot: Explore Appointments and safe cancellation" title="Dog · Appointments" description="Look up an appointment or review a cancellation." icon={<Icon size={16}><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M7 3v4M17 3v4M3 10h18"/></Icon>} actions={[
             { label: 'Look up an appointment', run: () => onTriggerPrompt('Show appointment ') },
             { label: 'Review a cancellation', run: () => onTriggerPrompt('Cancel appointment ') },
           ]} />
-          <SceneHotspot position={{ top: '40%', left: '29%' }} label="Vet hotspot: Browse Care Team and clinic specialists" title="Vet · Care team" icon={<Icon size={16}><path d="M9 3h6v6h6v6h-6v6H9v-6H3V9h6Z"/></Icon>} actions={[
+          <SceneHotspot position={{ top: '30%', left: '53%' }} label="Vet hotspot: Browse Care Team and clinic specialists" title="Vet · Care team" description="Open the Vets workspace or ask the Agent." icon={<Icon size={16}><path d="M9 3h6v6h6v6H9v-6H3V9h6Z"/></Icon>} actions={[
             { label: 'Open Vets workspace', run: () => onSelectPage('Vets') },
             { label: 'Open PetClinic Agent', run: onOpenAgent },
           ]} />
-          <SceneHotspot position={{ top: '78%', left: '37%' }} label="Clipboard hotspot: Query clinic rules and grounded RAG knowledge" title="Chart · Clinic policies" icon={<Icon size={16}><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 3h6M9 10h6M9 15h6"/></Icon>} actions={[
+          <SceneHotspot position={{ top: '84%', left: '61%' }} label="Clipboard hotspot: Query clinic rules and grounded RAG knowledge" title="Clinic Knowledge" subtitle="Search policies & guidance" description="Ask the Agent to search clinic policies and guidance." icon={<Icon size={16}><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 3h6M9 10h6M9 15h6"/></Icon>} actions={[
             { label: 'Ask about cancellation rules', run: () => onTriggerPrompt('What is the clinic policy for appointment cancellation?') },
             { label: 'Open PetClinic Agent', run: onOpenAgent },
           ]} />

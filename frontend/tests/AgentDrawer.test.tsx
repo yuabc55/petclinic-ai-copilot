@@ -54,6 +54,7 @@ describe('Agent Drawer', () => {
 
   async function openDrawer() {
     await act(async () => container.querySelector<HTMLButtonElement>('.agent-launcher')!.click())
+    await act(async () => container.querySelector<HTMLButtonElement>('.mascot-open-agent')!.click())
   }
 
   async function enterText(text: string) {
@@ -96,6 +97,28 @@ describe('Agent Drawer', () => {
     await act(async () => document.activeElement!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })))
     expect(container.querySelector('.scene-quick-actions')).toBeNull()
     expect(document.activeElement).toBe(hotspot)
+  })
+
+  it('opens Dr. Cleo quick actions before the Drawer and restores focus on Escape', async () => {
+    const launcher = container.querySelector<HTMLButtonElement>('.agent-launcher')!
+    launcher.focus()
+    await act(async () => launcher.click())
+    expect(container.querySelector('.mascot-popover')).not.toBeNull()
+    expect(container.querySelector('.agent-drawer')).toBeNull()
+    expect(document.activeElement).toBe(container.querySelector('.mascot-open-agent'))
+    await act(async () => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', cancelable: true })))
+    expect(container.querySelector('.mascot-popover')).toBeNull()
+    expect(document.activeElement).toBe(launcher)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('keeps Clinic Knowledge as a real Agent prompt entry', async () => {
+    const hotspot = container.querySelector<HTMLButtonElement>('[aria-label^="Clipboard hotspot:"]')!
+    expect(hotspot.textContent).toContain('Search policies & guidance')
+    await act(async () => hotspot.click())
+    await act(async () => container.querySelector<HTMLButtonElement>('.scene-quick-actions button')!.click())
+    expect(container.querySelector<HTMLTextAreaElement>('textarea')?.value).toContain('clinic policy')
+    expect(fetchMock).not.toHaveBeenCalled()
   })
 
   it('passes an unbound appointment draft to the Drawer and returns to its hotspot', async () => {
