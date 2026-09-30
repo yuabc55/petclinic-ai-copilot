@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
+import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import ReactMarkdown from 'react-markdown'
 import { agentClient, isMockMode, type AgentResponse, type AgentSource, type AgentStreamEvent, type Approval } from './agentApi'
 
@@ -86,7 +86,7 @@ const navigation: { label: Page; description: string; icon: ReactNode }[] = [
   },
   {
     label: 'Pets',
-    description: 'Patient registry and coat notes',
+    description: 'Pet records and information',
     icon: <><circle cx="6" cy="8" r="1.2"/><circle cx="10" cy="5" r="1.2"/><circle cx="15" cy="5" r="1.2"/><circle cx="19" cy="8" r="1.2"/><path d="M12 12c-2.5 0-6 3.4-6 5.5A2.5 2.5 0 0 0 8.5 20c1.3 0 2.2-.8 3.5-.8s2.2.8 3.5.8a2.5 2.5 0 0 0 2.5-2.5C18 15.4 14.5 12 12 12Z"/></>,
   },
   {
@@ -396,8 +396,7 @@ export function App() {
 
   function triggerPrompt(promptText: string) {
     setInput(promptText)
-    setMascotMenuOpen(false)
-    setDrawerOpen(true)
+    openDrawer()
   }
 
   const workflowState = restoring ? 'restoring' : busy ? 'running' : error || activitySteps.some(step => step.state === 'error') ? 'error' : approval ? 'waiting' : 'ready'
@@ -406,7 +405,7 @@ export function App() {
     : error || activitySteps.some(step => step.state === 'error') ? 'Needs attention' : approval ? 'Waiting for your approval' : 'Ready to help'
 
   return (
-    <div className="app-shell">
+    <div className={`app-shell${page === 'Dashboard' ? ' dashboard-scene' : ''}`}>
       <aside className="sidebar" inert={drawerOpen} aria-hidden={drawerOpen || undefined}>
         <button className="brand" onClick={() => setPage('Dashboard')} aria-label="PetClinic dashboard">
           <span className="brand-mark"><PetClinicCrossIcon size={22} /></span>
@@ -415,9 +414,9 @@ export function App() {
 
         <div className="nav-group-label">SANCTUARY</div>
         <nav className="nav-list" aria-label="Main navigation">
-          {navigation.map(item => (
+          {navigation.map((item, index) => (
             <button key={item.label} className={`nav-item ${page === item.label ? 'active' : ''}`} onClick={() => setPage(item.label)} aria-label={item.label} aria-current={page === item.label ? 'page' : undefined}>
-              <Icon size={19}>{item.icon}</Icon><span>{item.label}</span>
+              <span className="nav-index" aria-hidden="true">{String(index + 1).padStart(2, '0')}</span><Icon size={19}>{item.icon}</Icon><span className="nav-label">{item.label}</span>
             </button>
           ))}
         </nav>
@@ -461,16 +460,16 @@ export function App() {
               </div>
               <p>Select a quick inquiry or open full copilot conversation:</p>
               <div className="mascot-prompts">
-                <button className="mascot-prompt-btn" onClick={() => triggerPrompt('Show pet 1')}>
-                  <span>🐾 Show patient records (Pet #1)</span>
+                <button className="mascot-prompt-btn" onClick={() => triggerPrompt('Show pet ')}>
+                  <span>🐾 Look up a pet — enter an ID</span>
                   <Icon size={14}><path d="m9 18 6-6-6-6"/></Icon>
                 </button>
-                <button className="mascot-prompt-btn" onClick={() => triggerPrompt('Show appointment 2')}>
-                  <span>🗓️ Check appointment (#2)</span>
+                <button className="mascot-prompt-btn" onClick={() => triggerPrompt('Show appointment ')}>
+                  <span>🗓️ Look up an appointment — enter an ID</span>
                   <Icon size={14}><path d="m9 18 6-6-6-6"/></Icon>
                 </button>
-                <button className="mascot-prompt-btn" onClick={() => triggerPrompt('Cancel appointment 5')}>
-                  <span>⚠️ Cancel appointment (#5)</span>
+                <button className="mascot-prompt-btn" onClick={() => triggerPrompt('Cancel appointment ')}>
+                  <span>⚠️ Review a cancellation — enter an ID</span>
                   <Icon size={14}><path d="m9 18 6-6-6-6"/></Icon>
                 </button>
               </div>
@@ -602,6 +601,53 @@ function ApprovalCard({ approval, busy, pendingDecision, onDecision }: { approva
 /* ========================================================================= */
 /* INTERACTIVE EDITORIAL PETCLINIC POSTER COMPONENT                          */
 /* ========================================================================= */
+function SceneHotspot({ position, label, title, icon, actions }: {
+  position: { top: string; left: string }
+  label: string
+  title: string
+  icon: ReactNode
+  actions: { label: string; run: () => void }[]
+}) {
+  const [open, setOpen] = useState(false)
+  const wrapperRef = useRef<HTMLDivElement>(null)
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  const panelRef = useRef<HTMLDivElement>(null)
+  const panelId = useId()
+  useEffect(() => {
+    if (!open) return
+    panelRef.current?.querySelector<HTMLButtonElement>('button')?.focus({ preventScroll: true })
+    const dismiss = (event: PointerEvent) => {
+      if (!wrapperRef.current?.contains(event.target as Node)) setOpen(false)
+    }
+    document.addEventListener('pointerdown', dismiss)
+    return () => document.removeEventListener('pointerdown', dismiss)
+  }, [open])
+  return <div ref={wrapperRef} className={`scene-hotspot-wrap${open ? ' is-open' : ''}`} style={position}
+    onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setOpen(false) }}
+    onKeyDown={event => {
+      if (event.key === 'Escape' && open) {
+        event.preventDefault()
+        event.stopPropagation()
+        setOpen(false)
+        triggerRef.current?.focus({ preventScroll: true })
+      }
+    }}>
+    <button ref={triggerRef} className="hotspot-btn" aria-label={label} aria-expanded={open} aria-controls={open ? panelId : undefined} onClick={() => setOpen(value => !value)}>
+      <span className="hotspot-ring">{icon}</span>
+      <span className="hotspot-label">{title}</span>
+      <span className="hotspot-tooltip" aria-hidden="true"><strong>{title}</strong><span>Choose a quick action. Record IDs are entered in the Agent.</span></span>
+    </button>
+    {open && <div id={panelId} ref={panelRef} className="scene-quick-actions" role="group" aria-label={`${title} quick actions`}>
+      <span>{title}</span>
+      {actions.map(action => <button key={action.label} onClick={() => {
+        setOpen(false)
+        triggerRef.current?.focus({ preventScroll: true })
+        action.run()
+      }}>{action.label}<span aria-hidden="true">↗</span></button>)}
+    </div>}
+  </div>
+}
+
 function EditorialPoster({
   onOpenAgent,
   onSelectPage,
@@ -626,18 +672,18 @@ function EditorialPoster({
         {/* Magazine Masthead Overlay */}
         <div className="poster-masthead">
           <div>
-            <span className="poster-edition">PETCLINIC EDITORIAL EDITION · VOL. 2026</span>
-            <h2>Where clinical precision meets <em>gentle intuition.</em></h2>
+            <span className="poster-edition">PETCLINIC / A SHARED SPACE FOR CARE</span>
+            <h2>A quieter moment.<br /><em>A little more care.</em></h2>
           </div>
           <div className="poster-pills">
-            <span className="poster-pill"><PawIcon size={12} /> 18 Active Patients</span>
-            <span className="poster-pill">● Human-in-the-loop Guard</span>
+            <span className="poster-pill"><PawIcon size={12} /> People & companions</span>
+            <span className="poster-pill">Changes require your approval</span>
           </div>
         </div>
 
         {/* Cinematic Sunset Illustration Scene */}
         <div className="poster-canvas">
-          <svg className="poster-svg-stage" viewBox="0 0 1000 520" fill="none" preserveAspectRatio="xMidYMid meet">
+          <svg className="poster-svg-stage" viewBox="0 0 1000 520" fill="none" preserveAspectRatio="xMidYMid meet" role="img" aria-label="A veterinarian, a golden cat and a cream dog share a warmly lit clinic">
             <defs>
               {/* Sunset Ambient Gradient */}
               <radialGradient id="sunsetBeam" cx="72%" cy="25%" r="65%">
@@ -678,7 +724,7 @@ function EditorialPoster({
             </defs>
 
             {/* Room Architecture: Sunset Wall & Golden Beam */}
-            <rect width="1000" height="520" fill="#1C1109" />
+            {/* Transparent architecture lets the lighting continue into the navigation. */}
             <circle cx="720" cy="140" r="380" fill="url(#sunsetBeam)" />
 
             {/* Arched Clinic Window */}
@@ -691,21 +737,14 @@ function EditorialPoster({
             {/* Sunlight Ray Shafts */}
             <polygon points="760,140 920,480 320,480 720,140" fill="#FFE2A4" opacity="0.08" />
 
-            {/* Clinic Shelf & Amber Herbal Jars */}
-            <rect x="80" y="80" width="220" height="12" rx="3" fill="#4A2E1A" />
-            <rect x="110" y="52" width="22" height="28" rx="4" fill="#B56E26" opacity="0.75" />
-            <rect x="140" y="44" width="26" height="36" rx="4" fill="#7A481B" opacity="0.8" />
-            <rect x="175" y="56" width="20" height="24" rx="3" fill="#D4903E" opacity="0.7" />
-            <path d="M220 50 Q240 30 260 55 Q275 80 250 92" stroke="#4D7A58" strokeWidth="3" fill="none" opacity="0.6" />
-
             {/* Consultation Desk (Mahogany Surface) */}
             <polygon points="120,380 960,380 900,520 60,520" fill="url(#woodDesk)" />
             <line x1="120" y1="380" x2="960" y2="380" stroke="#DDA85B" strokeWidth="2" opacity="0.6" />
 
             {/* ======================================================== */}
-            {/* FIGURE 1: THE VETERINARIAN (Dr. Sarah Jenkins)           */}
+            {/* FIGURE 1: THE VETERINARIAN           */}
             {/* ======================================================== */}
-            <g id="figure-vet" className="scene-hotspot-group" onClick={() => onSelectPage('Vets')}>
+            <g id="figure-vet" className="scene-hotspot-group">
               {/* Doctor Torso & Linen Scrubs Coat */}
               <path d="M200 480 Q210 320 280 290 Q340 300 370 480 Z" fill="url(#linenCoat)" />
               {/* Stethoscope around neck */}
@@ -725,7 +764,7 @@ function EditorialPoster({
             {/* ======================================================== */}
             {/* FIGURE 2: THE GOLDEN SHADED CAT (Sunlit on Desk)         */}
             {/* ======================================================== */}
-            <g id="figure-cat" className="scene-hotspot-group" onClick={() => onTriggerPrompt('Show pet 1')}>
+            <g id="figure-cat" className="scene-hotspot-group">
               {/* Cat Body Lying Down */}
               <path d="M440 380 Q430 310 500 300 Q580 295 620 340 Q630 380 570 385 Z" fill="url(#goldenCatGrad)" />
               {/* Curled Tail draping over desk edge */}
@@ -754,7 +793,7 @@ function EditorialPoster({
             {/* ======================================================== */}
             {/* FIGURE 3: THE CREAM PUPPY (Loyally Sitting Beside Table) */}
             {/* ======================================================== */}
-            <g id="figure-dog" className="scene-hotspot-group" onClick={() => onTriggerPrompt('Show appointment 2')}>
+            <g id="figure-dog" className="scene-hotspot-group">
               {/* Dog Body Sitting Attentively */}
               <path d="M720 520 Q700 370 780 340 Q850 350 860 520 Z" fill="url(#creamPupGrad)" />
               {/* Dog Head Tilted Toward Vet & Cat */}
@@ -787,89 +826,42 @@ function EditorialPoster({
           {/* ======================================================== */}
           {/* INTERACTIVE HOTSPOT PINS & FLOATING TOOLTIPS             */}
           {/* ======================================================== */}
-          {/* Hotspot 1: Cat (Patient Records) */}
-          <div className="scene-hotspot-wrap" style={{ top: '56%', left: '50%' }}>
-            <button
-              className="hotspot-btn"
-              onClick={() => onTriggerPrompt('Show pet 1')}
-              aria-label="Cat hotspot: Explore Patient Registry and pet profiles"
-            >
-              <div className="hotspot-ring hotspot-pulse"><PawIcon size={16} /></div>
-              <div className="hotspot-tooltip">
-                <strong><PawIcon size={14} /> Golden Shaded Cat</strong>
-                <span>Active patient profiles, vaccination history & coat data.</span>
-                <small>Click to query Pet #1 records →</small>
-              </div>
-            </button>
-          </div>
-
-          {/* Hotspot 2: Dog (Appointment Desk) */}
-          <div className="scene-hotspot-wrap" style={{ top: '68%', left: '76%' }}>
-            <button
-              className="hotspot-btn"
-              onClick={() => onTriggerPrompt('Show appointment 2')}
-              aria-label="Dog hotspot: Explore Appointments and safe cancellation"
-            >
-              <div className="hotspot-ring hotspot-pulse"><Icon size={16}><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M7 3v4M17 3v4M3 10h18"/></Icon></div>
-              <div className="hotspot-tooltip">
-                <strong><Icon size={14}><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M7 3v4M17 3v4M3 10h18"/></Icon> Cream Pup Desk</strong>
-                <span>Upcoming visits, scheduling & human-approved cancellations.</span>
-                <small>Click to query Appointment #2 →</small>
-              </div>
-            </button>
-          </div>
-
-          {/* Hotspot 3: Veterinarian (Care Team Directory) */}
-          <div className="scene-hotspot-wrap" style={{ top: '42%', left: '29%' }}>
-            <button
-              className="hotspot-btn"
-              onClick={() => onSelectPage('Vets')}
-              aria-label="Vet hotspot: Browse Care Team and clinic specialists"
-            >
-              <div className="hotspot-ring hotspot-pulse"><Icon size={16}><path d="M12 21s-8-4.6-8-10.7a4.6 4.6 0 0 1 8-3.1 4.6 4.6 0 0 1 8 3.1C20 16.4 12 21 12 21Z"/><path d="M9 12h6M12 9v6"/></Icon></div>
-              <div className="hotspot-tooltip">
-                <strong><Icon size={14}><path d="M12 21s-8-4.6-8-10.7a4.6 4.6 0 0 1 8-3.1 4.6 4.6 0 0 1 8 3.1C20 16.4 12 21 12 21Z"/><path d="M9 12h6M12 9v6"/></Icon> Dr. Jenkins & Team</strong>
-                <span>Board-certified veterinary doctors & surgical specialists.</span>
-                <small>Click to browse Care Team page →</small>
-              </div>
-            </button>
-          </div>
-
-          {/* Hotspot 4: Clinical Chart & Guidelines */}
-          <div className="scene-hotspot-wrap" style={{ top: '76%', left: '36%' }}>
-            <button
-              className="hotspot-btn"
-              onClick={() => onTriggerPrompt('What is the clinic policy for appointment cancellation?')}
-              aria-label="Clipboard hotspot: Query clinic rules and grounded RAG knowledge"
-            >
-              <div className="hotspot-ring"><Icon size={15}><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></Icon></div>
-              <div className="hotspot-tooltip">
-                <strong><Icon size={14}><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/></Icon> Clinical Guidelines</strong>
-                <span>RAG grounded knowledge base & cancellation protocols.</span>
-                <small>Click to ask Agent about policies →</small>
-              </div>
-            </button>
-          </div>
+          <SceneHotspot position={{ top: '55%', left: '50%' }} label="Cat hotspot: Explore Patient Registry and pet profiles" title="Cat · Pet records" icon={<PawIcon size={16} />} actions={[
+            { label: 'Look up a pet', run: () => onTriggerPrompt('Show pet ') },
+            { label: 'Open Pets workspace', run: () => onSelectPage('Pets') },
+          ]} />
+          <SceneHotspot position={{ top: '67%', left: '77%' }} label="Dog hotspot: Explore Appointments and safe cancellation" title="Dog · Appointments" icon={<Icon size={16}><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M7 3v4M17 3v4M3 10h18"/></Icon>} actions={[
+            { label: 'Look up an appointment', run: () => onTriggerPrompt('Show appointment ') },
+            { label: 'Review a cancellation', run: () => onTriggerPrompt('Cancel appointment ') },
+          ]} />
+          <SceneHotspot position={{ top: '40%', left: '29%' }} label="Vet hotspot: Browse Care Team and clinic specialists" title="Vet · Care team" icon={<Icon size={16}><path d="M9 3h6v6h6v6h-6v6H9v-6H3V9h6Z"/></Icon>} actions={[
+            { label: 'Open Vets workspace', run: () => onSelectPage('Vets') },
+            { label: 'Open PetClinic Agent', run: onOpenAgent },
+          ]} />
+          <SceneHotspot position={{ top: '78%', left: '37%' }} label="Clipboard hotspot: Query clinic rules and grounded RAG knowledge" title="Chart · Clinic policies" icon={<Icon size={16}><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 3h6M9 10h6M9 15h6"/></Icon>} actions={[
+            { label: 'Ask about cancellation rules', run: () => onTriggerPrompt('What is the clinic policy for appointment cancellation?') },
+            { label: 'Open PetClinic Agent', run: onOpenAgent },
+          ]} />
         </div>
 
         {/* Scene Index & Quick Jump Strip */}
         <div className="poster-legend">
           <div className="legend-label">
             <PawIcon size={14} />
-            <span>INTERACTIVE SCENE HOTSPOTS</span>
+            <span>EXPLORE THE SCENE</span>
           </div>
           <div className="legend-items">
-            <button className="legend-btn" onClick={() => onTriggerPrompt('Show pet 1')}>
-              <strong>[01]</strong> 🐾 Cat: Patient Registry
+            <button className="legend-btn" onClick={() => onTriggerPrompt('Show pet ')}>
+              <strong>[01]</strong> Cat / Pet records
             </button>
-            <button className="legend-btn" onClick={() => onTriggerPrompt('Show appointment 2')}>
-              <strong>[02]</strong> 🗓️ Dog: Appointments
+            <button className="legend-btn" onClick={() => onTriggerPrompt('Show appointment ')}>
+              <strong>[02]</strong> Dog / Appointments
             </button>
             <button className="legend-btn" onClick={() => onSelectPage('Vets')}>
-              <strong>[03]</strong> 🩺 Doctor: Care Team
+              <strong>[03]</strong> Vet / Care team
             </button>
             <button className="legend-btn" onClick={() => onTriggerPrompt('What is the clinic cancellation policy?')}>
-              <strong>[04]</strong> 📋 Desk: Knowledge RAG
+              <strong>[04]</strong> Chart / Clinic policies
             </button>
           </div>
         </div>
@@ -880,13 +872,13 @@ function EditorialPoster({
         <div className="quickbar-copy">
           <div className="quickbar-badge"><DrCleoAvatar size={24} /></div>
           <div>
-            <strong>Ask Dr. Cleo anything about patients, visits, or clinical rules</strong>
-            <span>Transparent tool activity · Grounded RAG citations · Human-in-the-loop safeguards</span>
+            <strong>Everyday care, with you in control.</strong>
+            <span>Live records · Clinic sources · Your approval</span>
           </div>
         </div>
         <div className="quickbar-actions">
-          <button className="quickbar-btn" onClick={() => onTriggerPrompt('Show pet 1')}><PawIcon size={13} /> Pet Records</button>
-          <button className="quickbar-btn" onClick={() => onTriggerPrompt('Cancel appointment 5')}>⚠️ Review Cancellation</button>
+          <button className="quickbar-btn" onClick={() => onTriggerPrompt('Show pet ')}><PawIcon size={13} /> Pet Records</button>
+          <button className="quickbar-btn" onClick={() => onTriggerPrompt('Cancel appointment ')}>Review Cancellation</button>
           <button className="quickbar-btn" onClick={onOpenAgent}>Open Full Copilot →</button>
         </div>
       </div>

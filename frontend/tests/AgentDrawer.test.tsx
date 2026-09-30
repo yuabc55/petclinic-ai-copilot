@@ -85,6 +85,34 @@ describe('Agent Drawer', () => {
     await submit()
   }
 
+  it('opens contextual actions without fetching and restores hotspot focus on Escape', async () => {
+    const hotspot = container.querySelector<HTMLButtonElement>('[aria-label^="Cat hotspot:"]')!
+    hotspot.focus()
+    await act(async () => hotspot.click())
+    const panel = container.querySelector<HTMLElement>('.scene-quick-actions')!
+    expect(hotspot.getAttribute('aria-expanded')).toBe('true')
+    expect(panel.contains(document.activeElement)).toBe(true)
+    expect(fetchMock).not.toHaveBeenCalled()
+    await act(async () => document.activeElement!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })))
+    expect(container.querySelector('.scene-quick-actions')).toBeNull()
+    expect(document.activeElement).toBe(hotspot)
+  })
+
+  it('passes an unbound appointment draft to the Drawer and returns to its hotspot', async () => {
+    const hotspot = container.querySelector<HTMLButtonElement>('[aria-label^="Dog hotspot:"]')!
+    await act(async () => hotspot.click())
+    await act(async () => container.querySelector<HTMLButtonElement>('.scene-quick-actions button')!.click())
+    expect(container.querySelector<HTMLTextAreaElement>('textarea')?.value).toBe('Show appointment ')
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(container.querySelector('.scene-quick-actions')).toBeNull()
+    await act(async () => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', cancelable: true })))
+    expect(document.activeElement).toBe(hotspot)
+    const vetNav = container.querySelector<HTMLButtonElement>('.nav-item[aria-label="Vets"]')!
+    await act(async () => vetNav.click())
+    expect(vetNav.getAttribute('aria-current')).toBe('page')
+    expect(container.querySelector('.section-placeholder h2')?.textContent).toBe('Vets workspace')
+  })
+
   it('contains keyboard focus and returns to the launcher on Escape', async () => {
     await openDrawer()
     const panel = container.querySelector<HTMLElement>('.agent-drawer')!
