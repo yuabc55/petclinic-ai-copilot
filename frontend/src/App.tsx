@@ -33,49 +33,8 @@ function PetClinicCrossIcon({ size = 22 }: { size?: number }) {
   )
 }
 
-/* Dr. Cleo Mascot Face with animated ears and blinking eyes */
 function DrCleoAvatar({ size = 38 }: { size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 44 44" fill="none" className="mascot-face-svg" aria-hidden="true">
-      {/* Cat Head Base - Golden Shaded Fur */}
-      <circle cx="22" cy="24" r="15" fill="#E8B868" />
-      <circle cx="22" cy="24" r="14" fill="url(#catFurGrad)" />
-      {/* Golden Shaded Cheeks */}
-      <path d="M11 26c0 6 5 10 11 10s11-4 11-10c0-4-3-7-6-8-2 2-3 2-5 2s-3 0-5-2c-3 1-6 4-6 8z" fill="#FFF8EE" />
-      {/* Left Ear with earTwitch animation */}
-      <g className="mascot-ear-left">
-        <polygon points="10,18 7,5 19,12" fill="#D49944" />
-        <polygon points="10,16 9,8 16,13" fill="#FCE8D3" />
-      </g>
-      {/* Right Ear with earTwitch animation */}
-      <g className="mascot-ear-right">
-        <polygon points="34,18 37,5 25,12" fill="#D49944" />
-        <polygon points="34,16 35,8 28,13" fill="#FCE8D3" />
-      </g>
-      {/* Blinking Green-Gold Eyes */}
-      <g className="mascot-eye">
-        <ellipse cx="16.5" cy="21" rx="2.5" ry="3.2" fill="#3D7D54" />
-        <circle cx="15.8" cy="20" r="1" fill="#FFF" />
-        <ellipse cx="27.5" cy="21" rx="2.5" ry="3.2" fill="#3D7D54" />
-        <circle cx="26.8" cy="20" r="1" fill="#FFF" />
-      </g>
-      {/* Cute Pink Nose & Mouth */}
-      <polygon points="22,25 20.5,23.5 23.5,23.5" fill="#E58D82" />
-      <path d="M22 25v2.2M22 27.2c-1 0-2-.5-2-1.5M22 27.2c1 0 2-.5 2-1.5" stroke="#7A5228" strokeWidth="1.2" strokeLinecap="round" />
-      {/* Whiskers */}
-      <path d="M14 26l-6-1M14 28l-7 1M30 26l6-1M30 28l7 1" stroke="#BA9365" strokeWidth="1" strokeLinecap="round" />
-      {/* Nurse Stethoscope Collar Charm */}
-      <path d="M15 35c2 3 5 4 7 4s5-1 7-4" stroke="#4F6D7A" strokeWidth="2" strokeLinecap="round" />
-      <circle cx="22" cy="39" r="2.2" fill="#C99A4A" stroke="#FFF" strokeWidth="0.8" />
-      <defs>
-        <radialGradient id="catFurGrad" cx="40%" cy="40%" r="60%">
-          <stop offset="0%" stopColor="#F9D28A" />
-          <stop offset="65%" stopColor="#DE9E46" />
-          <stop offset="100%" stopColor="#A86C25" />
-        </radialGradient>
-      </defs>
-    </svg>
-  )
+  return <img className="mascot-face-art" src="/dr-cleo.svg" width={size} height={size} alt="" aria-hidden="true" />
 }
 
 const navigation: { label: Page; description: string; icon: ReactNode }[] = [
@@ -426,7 +385,7 @@ export function App() {
     : error || activitySteps.some(step => step.state === 'error') ? 'Needs attention' : approval ? 'Waiting for your approval' : 'Ready to help'
 
   return (
-    <div className={`app-shell${page === 'Dashboard' ? ' dashboard-scene' : ''}`}>
+    <div className={`app-shell dashboard-scene${page === 'Dashboard' ? '' : ' section-scene'}`}>
       <aside className="sidebar" inert={drawerOpen} aria-hidden={drawerOpen || undefined}>
         <button className="brand" onClick={() => setPage('Dashboard')} aria-label="PetClinic dashboard">
           <span className="brand-mark"><PetClinicCrossIcon size={22} /></span>
@@ -716,19 +675,19 @@ function EditorialPoster({
           {/* ======================================================== */}
           {/* INTERACTIVE HOTSPOT PINS & FLOATING TOOLTIPS             */}
           {/* ======================================================== */}
-          <SceneHotspot position={{ top: '57%', left: '43%' }} label="Cat hotspot: Explore Patient Registry and pet profiles" title="Cat · Pet records" description="Look up a pet or open the Pets workspace." icon={<PawIcon size={16} />} actions={[
+          <SceneHotspot position={{ top: '79%', left: '32%' }} label="Cat hotspot: Explore Patient Registry and pet profiles" title="Cat · Pet records" description="Look up a pet or open the Pets workspace." icon={<PawIcon size={16} />} actions={[
             { label: 'Look up a pet', run: () => onTriggerPrompt('Show pet ') },
             { label: 'Open Pets workspace', run: () => onSelectPage('Pets') },
           ]} />
-          <SceneHotspot position={{ top: '60%', left: '76%' }} label="Dog hotspot: Explore Appointments and safe cancellation" title="Dog · Appointments" description="Look up an appointment or review a cancellation." icon={<Icon size={16}><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M7 3v4M17 3v4M3 10h18"/></Icon>} actions={[
+          <SceneHotspot position={{ top: '81%', left: '79%' }} label="Dog hotspot: Explore Appointments and safe cancellation" title="Dog · Appointments" description="Look up an appointment or review a cancellation." icon={<Icon size={16}><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M7 3v4M17 3v4M3 10h18"/></Icon>} actions={[
             { label: 'Look up an appointment', run: () => onTriggerPrompt('Show appointment ') },
             { label: 'Review a cancellation', run: () => onTriggerPrompt('Cancel appointment ') },
           ]} />
-          <SceneHotspot position={{ top: '30%', left: '53%' }} label="Vet hotspot: Browse Care Team and clinic specialists" title="Vet · Care team" description="Open the Vets workspace or ask the Agent." icon={<Icon size={16}><path d="M9 3h6v6h6v6H9v-6H3V9h6Z"/></Icon>} actions={[
+          <SceneHotspot position={{ top: '30%', left: '70%' }} label="Vet hotspot: Browse Care Team and clinic specialists" title="Vet · Care team" description="Open the Vets workspace or ask the Agent." icon={<Icon size={16}><path d="M9 3h6v6h6v6H9v-6H3V9h6Z"/></Icon>} actions={[
             { label: 'Open Vets workspace', run: () => onSelectPage('Vets') },
             { label: 'Open PetClinic Agent', run: onOpenAgent },
           ]} />
-          <SceneHotspot position={{ top: '84%', left: '61%' }} label="Clipboard hotspot: Query clinic rules and grounded RAG knowledge" title="Clinic Knowledge" subtitle="Search policies & guidance" description="Ask the Agent to search clinic policies and guidance." icon={<Icon size={16}><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 3h6M9 10h6M9 15h6"/></Icon>} actions={[
+          <SceneHotspot position={{ top: '89%', left: '56%' }} label="Clipboard hotspot: Query clinic rules and grounded RAG knowledge" title="Clinic Knowledge" subtitle="Search policies & guidance" description="Ask the Agent to search clinic policies and guidance." icon={<Icon size={16}><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 3h6M9 10h6M9 15h6"/></Icon>} actions={[
             { label: 'Ask about cancellation rules', run: () => onTriggerPrompt('What is the clinic policy for appointment cancellation?') },
             { label: 'Open PetClinic Agent', run: onOpenAgent },
           ]} />
@@ -790,7 +749,7 @@ function SectionPlaceholder({ page, onOpenAgent }: { page: Page; onOpenAgent: ()
       <div className="placeholder-icon"><Icon size={28}>{item.icon}</Icon></div>
       <span className="placeholder-eyebrow">COMING NEXT</span>
       <h2>{page} workspace</h2>
-      <p>This dedicated clinical section is being built. In the meantime, Dr. Cleo and the PetClinic Agent can look up records, verify doctor schedules, and review appointment changes.</p>
+       <p>This dedicated clinical section is being prepared. Ask Dr. Cleo for information available through the PetClinic Agent.</p>
       <button onClick={onOpenAgent}>Consult Dr. Cleo <Icon size={17}><path d="m5 12h14m-6-6 6 6-6 6"/></Icon></button>
     </div>
   </>
