@@ -55,7 +55,7 @@ allowed = client.options('/agent/chat', headers={
     'Origin': 'https://petclinic.vercel.app',
     'Access-Control-Request-Method': 'POST'})
 denied = client.options('/agent/chat', headers={
-    'Origin': 'http://localhost:5173',
+    'Origin': 'https://unauthorized.example.com',
     'Access-Control-Request-Method': 'POST'})
 assert allowed.status_code == 200
 assert allowed.headers['access-control-allow-origin'] == 'https://petclinic.vercel.app'

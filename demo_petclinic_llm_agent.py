@@ -34,20 +34,39 @@ def get_pet(pet_id: int) -> dict:
     return request_json('GET', f'/pets/{pet_id}')
 
 
-TOOLS = {t.name: t for t in (get_pet, get_appointment, search_knowledge, cancel_appointment)}
+@tool
+def list_pets() -> dict:
+    """List all pets and their total count from PetClinic; no pet ID is needed."""
+    result = request_json('GET', '/pets', allow_list=True)
+    if not result.get('ok'):
+        return result
+    pets = result.get('data')
+    if (not isinstance(pets, list)
+            or any(not isinstance(pet, dict) or type(pet.get('id')) is not int
+                   for pet in pets)):
+        return dict(ok=False, status=result.get('status'), error='invalid_response')
+    return dict(ok=True, status=result['status'], pets=pets, count=len(pets))
+
+
+TOOLS = {t.name: t for t in (get_pet, list_pets, get_appointment, search_knowledge,
+                            cancel_appointment)}
 SCHEMAS = [dict(type='function', name=t.name, description=t.description,
                 parameters=dict(type='object', properties=t.args,
                                 required=list(t.args), additionalProperties=False),
                 strict=True) for t in TOOLS.values()]
 INSTRUCTIONS = (
     'You are a PetClinic assistant. Reply in the user language. Use tools for facts. '
-    'Ask for missing IDs, never invent them. Propose cancellation only when the user '
+    'Ask for missing IDs for single-resource queries, never invent them. '
+    'Propose cancellation only when the user '
     'explicitly requests it. For an explicit cancellation request, first call '
     'get_appointment; after its result, call cancel_appointment using that exact id '
     'and version as appointment_id and expected_version. Never ask the user to confirm '
     'in natural language: the Graph handles human approval and will interrupt before '
     'the write executes. Cancellation still requires that Graph approval. '
-    'Use get_pet/get_appointment for live facts and search_knowledge for policies or FAQ. '
+    'Use get_pet for one pet by ID and list_pets for all pets or their total count. '
+    'list_pets needs no ID; never enumerate pet IDs to guess a count. '
+    'Only a successful list_pets result supplies a count; do not treat errors as zero pets. '
+    'Use get_appointment for appointment facts and search_knowledge for policies or FAQ. '
     'For a question about both current state and policy, call both read tools on '
     'successive turns before answering. Eligibility questions are not cancel requests. '
     'Use retrieved titles and sections as evidence; never invent clinic rules. '
@@ -132,6 +151,8 @@ def guard_node(state: State) -> Command:
     name, args = call['name'], call['args']
     if name not in TOOLS or set(args) != set(TOOLS[name].args):
         return blocked('Unknown tool or invalid arguments.')
+    if name == 'list_pets':
+        return Command(goto='read_tools')
     if name == 'search_knowledge':
         if not isinstance(args['query'], str) or not 1 <= len(args['query'].strip()) <= 300:
             return blocked('Invalid knowledge query.')
@@ -159,7 +180,8 @@ def build_graph(checkpointer=None):
     builder = StateGraph(State)
     builder.add_node('model_node', model_node)
     builder.add_node('guard', guard_node, destinations=('model_node', 'read_tools', 'approval_node'))
-    builder.add_node('read_tools', ToolNode([get_pet, get_appointment, search_knowledge]))
+    builder.add_node('read_tools', ToolNode([get_pet, list_pets, get_appointment,
+                                           search_knowledge]))
     builder.add_node('approval_node', approval_node)
     builder.add_node('cancel_tools', ToolNode([cancel_appointment]))
     builder.add_edge(START, 'model_node')
