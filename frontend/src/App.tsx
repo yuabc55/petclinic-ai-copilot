@@ -408,6 +408,8 @@ export function App() {
         </div>
       </aside>
 
+      {page !== 'Dashboard' && <SectionArt page={page} onOpenAgent={openDrawer} onTriggerPrompt={triggerPrompt} hidden={drawerOpen} />}
+
       <main className="main" inert={drawerOpen} aria-hidden={drawerOpen || undefined}>
         <header className="topbar">
           <div className="breadcrumb">Sanctuary <Icon size={14}><path d="m9 18 6-6-6-6"/></Icon><strong>{page}</strong></div>
@@ -421,7 +423,7 @@ export function App() {
               onTriggerPrompt={triggerPrompt}
             />
           ) : (
-            <SectionPlaceholder page={page} onOpenAgent={openDrawer} />
+            <SectionIntro page={page} onOpenAgent={openDrawer} />
           )}
         </div>
       </main>
@@ -735,24 +737,33 @@ function EditorialPoster({
   )
 }
 
-function SectionPlaceholder({ page, onOpenAgent }: { page: Page; onOpenAgent: () => void }) {
+function SectionArt({ page, onOpenAgent, onTriggerPrompt, hidden }: {
+  page: Exclude<Page, 'Dashboard'>
+  onOpenAgent: () => void
+  onTriggerPrompt: (prompt: string) => void
+  hidden: boolean
+}) {
+  return <div className="section-art" inert={hidden} aria-hidden={hidden || undefined}>
+    <div className="section-art-image">
+      <img src="/clinic-editorial-v1.webp" alt="A veterinarian with a cat and a dog in a warmly lit clinic" />
+      {page === 'Pets' && <>
+        <button className="section-cue cue-cat" onClick={() => onTriggerPrompt('Show pet ')} aria-label="Ask Dr. Cleo about pet records near the cat"><span className="cue-dot"/><span className="cue-label">Ask about pets</span></button>
+        <button className="section-cue cue-dog" onClick={() => onTriggerPrompt('Show pet ')} aria-label="Ask Dr. Cleo about pet records near the dog"><span className="cue-dot"/><span className="cue-label">Ask about pets</span></button>
+      </>}
+      {page === 'Appointments' && <button className="section-cue cue-chart" onClick={() => onTriggerPrompt('Show appointment ')} aria-label="Ask Dr. Cleo about an appointment near the clinic chart"><span className="cue-dot"/><span className="cue-label">Ask about an appointment</span></button>}
+      {page === 'Vets' && <button className="section-cue cue-vet" onClick={onOpenAgent} aria-label="Open Dr. Cleo near the veterinarian"><span className="cue-dot"/><span className="cue-label">Ask Dr. Cleo</span></button>}
+    </div>
+  </div>
+}
+
+function SectionIntro({ page, onOpenAgent }: { page: Page; onOpenAgent: () => void }) {
   const item = navigation.find(entry => entry.label === page)!
-  return <>
-    <div className="page-heading">
-      <div>
-        <span className="eyebrow"><PawIcon size={13} /> SANCTUARY</span>
-        <h1>{page}</h1>
-        <p>{item.description}</p>
-      </div>
-    </div>
-    <div className="section-placeholder">
-      <div className="placeholder-icon"><Icon size={28}>{item.icon}</Icon></div>
-      <span className="placeholder-eyebrow">COMING NEXT</span>
-      <h2>{page} workspace</h2>
-       <p>This dedicated clinical section is being prepared. Ask Dr. Cleo for information available through the PetClinic Agent.</p>
-      <button onClick={onOpenAgent}>Consult Dr. Cleo <Icon size={17}><path d="m5 12h14m-6-6 6 6-6 6"/></Icon></button>
-    </div>
-  </>
+  return <div className="section-intro">
+    <span className="section-kicker"><PawIcon size={13} /> THE CARE SCENE</span>
+    <h1>{page}</h1>
+    <p>{item.description}. Ask Dr. Cleo for available clinic information.</p>
+    <button onClick={onOpenAgent}>Open Dr. Cleo <Icon size={17}><path d="m5 12h14m-6-6 6 6-6 6"/></Icon></button>
+  </div>
 }
 
 export default App

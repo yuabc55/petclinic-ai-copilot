@@ -133,7 +133,12 @@ describe('Agent Drawer', () => {
     const vetNav = container.querySelector<HTMLButtonElement>('.nav-item[aria-label="Vets"]')!
     await act(async () => vetNav.click())
     expect(vetNav.getAttribute('aria-current')).toBe('page')
-    expect(container.querySelector('.section-placeholder h2')?.textContent).toBe('Vets workspace')
+    expect(container.querySelector('.section-intro h1')?.textContent).toBe('Vets')
+    expect(container.querySelector('.section-placeholder')).toBeNull()
+    expect(container.querySelector('.section-art-image img')?.getAttribute('src')).toBe('/clinic-editorial-v1.webp')
+    await act(async () => container.querySelector<HTMLButtonElement>('.cue-vet')!.click())
+    expect(container.querySelector('.agent-drawer')).not.toBeNull()
+    expect(fetchMock).not.toHaveBeenCalled()
   })
 
   it('contains keyboard focus and returns to the launcher on Escape', async () => {
