@@ -25,13 +25,19 @@ configured_origins = [origin.strip().rstrip("/") for origin in
 if on_railway and not configured_origins:
     raise RuntimeError("Set FRONTEND_ORIGINS to the deployed frontend origin.")
 app = FastAPI()
+allowed_origins = list(dict.fromkeys([
+    *(configured_origins or [f"http://{host}:{port}"
+                             for host in ("localhost", "127.0.0.1")
+                             for port in (5173, 3000)]),
+    "https://petclinic-ai-copilot-git-ui-editor-89a5f6-steph-huangs-projects.vercel.app",
+    "http://localhost:5173",
+]))
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=configured_origins or [f"http://{host}:{port}"
-                                        for host in ("localhost", "127.0.0.1")
-                                        for port in (5173, 3000)],
-    allow_methods=["GET", "POST"],
-    allow_headers=["Content-Type"],
+    allow_origins=allowed_origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 configured_checkpoint = os.getenv("CHECKPOINT_DB_PATH")
 volume_path = os.getenv("RAILWAY_VOLUME_MOUNT_PATH")
