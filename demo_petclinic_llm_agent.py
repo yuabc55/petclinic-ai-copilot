@@ -103,9 +103,11 @@ def responses_create(payload: dict) -> dict:
 
 def model_node(state: State) -> dict:
     last = state['messages'][-1]
-    terminal = state.get('halted', False) or state.get('turns', 0) >= 8
+    new_request = isinstance(last, HumanMessage)
+    turns = 0 if new_request else state.get('turns', 0)
+    terminal = not new_request and (state.get('halted', False) or turns >= 8)
     history = list(state.get('api_history', []))
-    if isinstance(last, HumanMessage):
+    if new_request:
         items = history + [dict(role='user', content=last.content)]
     else:
         outputs = []
@@ -132,7 +134,7 @@ def model_node(state: State) -> dict:
         if json.loads(last.content).get('status') == 409:
             text += '\nHTTP 409: a fresh GET and fresh approval are required; no automatic retry.'
     return dict(messages=[AIMessage(content=text, tool_calls=calls)],
-                api_history=items + response['output'], turns=state.get('turns', 0) + 1,
+                api_history=items + response['output'], turns=turns + 1,
                 halted=terminal)
 
 

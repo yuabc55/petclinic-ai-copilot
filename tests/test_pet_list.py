@@ -136,5 +136,90 @@ class PetListTests(unittest.TestCase):
                     self.opener.open.assert_called_once()
 
 
+    def test_existing_thread_can_query_pets_after_eight_model_turns(self):
+        payloads = []
+
+        def fake_model(payload):
+            payloads.append(payload)
+            if (payload['tool_choice'] == 'none'
+                    or payload['input'][-1].get('type') == 'function_call_output'):
+                return {'status': 'completed', 'output': [{'type': 'message', 'content': [
+                    {'type': 'output_text', 'text': 'offline-result'}]}]}
+            return {'status': 'completed', 'output': [{'type': 'function_call',
+                    'name': 'list_pets', 'arguments': '{}',
+                    'call_id': f'test-call-{len(payloads)}'}]}
+
+        graph = llm.build_graph()
+        config = {'configurable': {'thread_id': 'test-multiple-pet-queries'}}
+        with patch.object(llm, 'responses_create', side_effect=fake_model):
+            for index in range(5):
+                self.respond(b'[{"id": 1}]')
+                result = graph.invoke({'messages': [HumanMessage(
+                    content=f'How many pets? Request {index + 1}.')]}, config)
+                self.assertEqual(result['turns'], 2)
+                self.assertFalse(result['halted'])
+        self.assertEqual(self.opener.open.call_count, 5)
+        self.assertTrue(all(payload['tool_choice'] == 'auto' for payload in payloads))
+        self.assertEqual(sum(isinstance(message, HumanMessage)
+                             for message in result['messages']), 5)
+        self.assertEqual(sum(isinstance(message, ToolMessage)
+                             for message in result['messages']), 5)
+        self.assertEqual(sum(item.get('role') == 'user'
+                             for item in payloads[-1]['input']), 5)
+
+    def test_new_query_can_use_tools_after_a_blocked_request(self):
+        calls = []
+
+        def fake_model(payload):
+            calls.append(payload['tool_choice'])
+            if (payload['tool_choice'] == 'none'
+                    or payload['input'][-1].get('type') == 'function_call_output'):
+                return {'status': 'completed', 'output': [{'type': 'message', 'content': [
+                    {'type': 'output_text', 'text': 'offline-result'}]}]}
+            args = {'pet_id': 1} if payload['input'][-1]['content'] == 'blocked-query' else {}
+            return {'status': 'completed', 'output': [{'type': 'function_call',
+                    'name': 'list_pets', 'arguments': json.dumps(args),
+                    'call_id': f'test-blocked-call-{len(calls)}'}]}
+
+        graph = llm.build_graph()
+        config = {'configurable': {'thread_id': 'test-query-after-block'}}
+        with patch.object(llm, 'responses_create', side_effect=fake_model):
+            blocked = graph.invoke({'messages': [HumanMessage(content='blocked-query')]}, config)
+            self.assertTrue(blocked['halted'])
+            self.opener.open.assert_not_called()
+            self.respond(b'[{"id": 1}]')
+            result = graph.invoke({'messages': [HumanMessage(content='How many pets?')]}, config)
+        self.assertEqual(calls, ['auto', 'none', 'auto', 'auto'])
+        self.assertFalse(result['halted'])
+        self.assertEqual(result['turns'], 2)
+        self.opener.open.assert_called_once()
+        self.assertEqual(json.loads(result['messages'][-2].content)['count'], 1)
+
+    def test_single_request_still_stops_at_the_tool_turn_limit(self):
+        calls = []
+
+        def response(request, timeout):
+            result = BytesIO(b'[{"id": 1}]')
+            result.status = 200
+            return result
+
+        def looping_model(payload):
+            calls.append(payload['tool_choice'])
+            if payload['tool_choice'] == 'none':
+                return {'status': 'completed', 'output': [{'type': 'message', 'content': [
+                    {'type': 'output_text', 'text': 'offline-stopped'}]}]}
+            return {'status': 'completed', 'output': [{'type': 'function_call',
+                    'name': 'list_pets', 'arguments': '{}', 'call_id': f'test-loop-{len(calls)}'}]}
+
+        self.opener.open.side_effect = response
+        with patch.object(llm, 'responses_create', side_effect=looping_model):
+            result = llm.build_graph().invoke(
+                {'messages': [HumanMessage(content='How many pets?')]},
+                {'configurable': {'thread_id': 'test-pet-loop-limit'}, 'recursion_limit': 50})
+        self.assertEqual(calls, ['auto'] * 8 + ['none'])
+        self.assertTrue(result['halted'])
+        self.assertEqual(self.opener.open.call_count, 8)
+
+
 if __name__ == "__main__":
     unittest.main()
