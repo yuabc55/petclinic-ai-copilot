@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import { agentClient, isMockMode, type AgentResponse, type AgentSource, type AgentStreamEvent, type Approval } from './agentApi'
 
 type Page = 'Dashboard' | 'Pets' | 'Appointments' | 'Vets'
@@ -502,7 +503,11 @@ export function App() {
               <div className={`message-row ${message.role}`} key={message.id}>
                 {message.role === 'assistant' && <div className="message-avatar"><DrCleoAvatar size={20} /></div>}
                 <div className="message-content">
-                  {message.role === 'assistant' ? <ReactMarkdown>{message.text}</ReactMarkdown> : message.text}
+                  {message.role === 'assistant' ? <ReactMarkdown remarkPlugins={[remarkGfm]} components={{
+                    table: ({ children }) => <div className="message-table-scroll" role="region" aria-label="Agent response table" tabIndex={0}>
+                      <table>{children}</table>
+                    </div>,
+                  }}>{message.text}</ReactMarkdown> : message.text}
                   {message.sources && message.sources.length > 0 && <Sources sources={message.sources} />}
                 </div>
               </div>

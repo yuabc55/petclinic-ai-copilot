@@ -856,6 +856,13 @@ svg { flex: none; }
 .message-content pre { max-width: 100%; overflow-x: auto; padding: var(--space-3); border-radius: var(--radius-sm); background: var(--surface-cream); border: 1px solid var(--border); font-size: var(--font-sm); }
 .message-content code { overflow-wrap: anywhere; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
 .message-content blockquote { margin: var(--space-3) 0; padding-left: var(--space-3); border-left: 2px solid var(--gold-warm); color: var(--muted); }
+.message-table-scroll { max-width: 100%; overflow-x: auto; margin: var(--space-3) 0; border: 1px solid var(--border); border-radius: var(--radius-sm); }
+.message-table-scroll:focus-visible { outline: 2px solid var(--caramel); outline-offset: 2px; }
+.message-table-scroll table { width: max-content; min-width: 100%; border-collapse: collapse; font-size: var(--font-sm); }
+.message-table-scroll th, .message-table-scroll td { padding: var(--space-2) var(--space-3); min-width: 5rem; max-width: 18rem; border-bottom: 1px solid var(--border); border-right: 1px solid var(--border); vertical-align: top; }
+.message-table-scroll th { background: var(--surface-cream); color: var(--text-strong); font-weight: 600; white-space: nowrap; }
+.message-table-scroll tr > :last-child { border-right: 0; }
+.message-table-scroll tbody tr:last-child td { border-bottom: 0; }
 
 /* User Chat Bubble */
 .message-row.user .message-content {

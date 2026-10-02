@@ -233,6 +233,45 @@ describe('Agent Drawer', () => {
     expect(container.querySelector('.activity-step[data-activity-key="completed"]')?.textContent).toContain('完成')
   })
 
+  it('renders a pet table with separate cells, including after conversation recovery', async () => {
+    const answer = [
+      '宠物信息：', '',
+      '| ID | 名字 | 类型 | 出生日期 | 主人 ID | 就诊记录 |',
+      '| --- | --- | --- | --- | --- | --- |',
+      '| 1 | Leo | 猫 | 2010-09-07 | 1 | 无 |',
+      '| 7 | Samantha | 猫 | 2012-09-04 | 6 | 绝育（2013-01-04）、狂犬疫苗（2013-01-01） |',
+    ].join('\n')
+    const checkTable = () => {
+      const region = container.querySelector<HTMLDivElement>('.message-table-scroll')!
+      expect(region.getAttribute('role')).toBe('region')
+      expect(region.getAttribute('aria-label')).toBe('Agent response table')
+      expect(region.tabIndex).toBe(0)
+      expect(Array.from(region.querySelectorAll('thead th'), cell => cell.textContent))
+        .toEqual(['ID', '名字', '类型', '出生日期', '主人 ID', '就诊记录'])
+      const rows = region.querySelectorAll('tbody tr')
+      expect(rows).toHaveLength(2)
+      expect(Array.from(rows[0].querySelectorAll('td'), cell => cell.textContent))
+        .toEqual(['1', 'Leo', '猫', '2010-09-07', '1', '无'])
+      expect(rows[1].querySelectorAll('td')[5].textContent)
+        .toBe('绝育（2013-01-04）、狂犬疫苗（2013-01-01）')
+    }
+    fetchMock.mockResolvedValueOnce(streamResponse(completed(answer)))
+    await ask('列出宠物信息')
+    await waitFor(() => container.querySelector('.message-table-scroll') !== null)
+    checkTable()
+
+    await act(async () => root.unmount())
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({
+      thread_id: threadId, status: 'completed',
+      messages: [{ role: 'assistant', content: answer }], approval: null,
+    }), { status: 200 }))
+    root = createRoot(container)
+    await act(async () => root.render(<App />))
+    await openDrawer()
+    await waitFor(() => container.querySelector('.message-table-scroll') !== null)
+    checkTable()
+  })
+
   it('shows backend approval details and keeps one row per repeated tool', async () => {
     fetchMock.mockResolvedValue(streamResponse(
       { event: 'started', data: { thread_id: threadId, message: 'working' } },
