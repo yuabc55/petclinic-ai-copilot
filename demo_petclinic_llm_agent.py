@@ -54,8 +54,18 @@ SCHEMAS = [dict(type='function', name=t.name, description=t.description,
                 parameters=dict(type='object', properties=t.args,
                                 required=list(t.args), additionalProperties=False),
                 strict=True) for t in TOOLS.values()]
+PET_COUNT_REQUESTS = {
+    'how many pets', 'how many pets in total', 'how many pets are there',
+    'total number of pets', '一共有多少宠物', '共有多少宠物', '宠物总数',
+}
+PET_LIST_REQUESTS = {
+    'list pets', 'list all pets', 'show all pets', 'what pets are there',
+    '列出所有宠物', '有哪些宠物',
+}
 INSTRUCTIONS = (
     'You are a PetClinic assistant. Reply in the user language. Use tools for facts. '
+    'Current tool definitions determine your capabilities; earlier assistant refusals '
+    'may be outdated. '
     'Ask for missing IDs for single-resource queries, never invent them. '
     'Propose cancellation only when the user '
     'explicitly requests it. For an explicit cancellation request, first call '
@@ -65,6 +75,8 @@ INSTRUCTIONS = (
     'the write executes. Cancellation still requires that Graph approval. '
     'Use get_pet for one pet by ID and list_pets for all pets or their total count. '
     'list_pets needs no ID; never enumerate pet IDs to guess a count. '
+    'Always query list_pets for an explicit pet list or total request. '
+    'After a successful list_pets result, answer using its pets and count. '
     'Only a successful list_pets result supplies a count; do not treat errors as zero pets. '
     'Use get_appointment for appointment facts and search_knowledge for policies or FAQ. '
     'For a question about both current state and policy, call both read tools on '
@@ -107,8 +119,38 @@ def model_node(state: State) -> dict:
     turns = 0 if new_request else state.get('turns', 0)
     terminal = not new_request and (state.get('halted', False) or turns >= 8)
     history = list(state.get('api_history', []))
+    if (isinstance(last, ToolMessage) and last.name == 'list_pets'
+            and last.tool_call_id.startswith('direct-list-pets-')):
+        question = next(message.content for message in reversed(state['messages'])
+                        if isinstance(message, HumanMessage))
+        request_text = ' '.join(question.casefold().split()).rstrip('?.!。？！')
+        chinese = '宠物' in question
+        result = json.loads(last.content)
+        if not result.get('ok'):
+            status = f"HTTP {result['status']}" if result.get('status') is not None else result['error']
+            detail = result.get('detail') or result.get('error')
+            text = ('宠物查询失败：' if chinese else 'Pet query failed: ') + status + f'; {detail}'
+        else:
+            count = result['count']
+            text = f'宠物总数为 **{count} 只**。' if chinese else f'There are **{count} pets** in total.'
+            if request_text in PET_LIST_REQUESTS:
+                rows = [f"- ID {pet['id']}" + (f": {pet['name']}" if pet.get('name') else '')
+                        for pet in result['pets']]
+                if rows:
+                    text += '\n\n' + '\n'.join(rows)
+        return dict(messages=[AIMessage(content=text)],
+                    api_history=history + [dict(role='assistant', content=text)],
+                    turns=turns + 1, halted=False)
     if new_request:
         items = history + [dict(role='user', content=last.content)]
+        if isinstance(last.content, str):
+            request_text = ' '.join(last.content.casefold().split()).rstrip('?.!。？！')
+            if request_text in PET_COUNT_REQUESTS | PET_LIST_REQUESTS:
+                call_id = 'direct-list-pets-' + str(uuid4())
+                return dict(messages=[AIMessage(content='', tool_calls=[
+                    dict(name='list_pets', args={}, id=call_id, type='tool_call')])],
+                    api_history=items,
+                    turns=1, halted=False)
     else:
         outputs = []
         for message in reversed(state['messages']):

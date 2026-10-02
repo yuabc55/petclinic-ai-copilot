@@ -132,7 +132,9 @@ class PetListTests(unittest.TestCase):
                     self.assertEqual(len(tools), 1)
                     self.assertEqual(tools[0].name, "list_pets")
                     self.assertEqual(json.loads(tools[0].content)["count"], 1)
-                    self.assertEqual(result["messages"][-1].content, "offline-list-result")
+                    self.assertIn('**1', result["messages"][-1].content)
+                    if question != "一共有多少宠物？":
+                        self.assertIn('test-pet', result["messages"][-1].content)
                     self.opener.open.assert_called_once()
 
 
@@ -189,7 +191,7 @@ class PetListTests(unittest.TestCase):
             self.opener.open.assert_not_called()
             self.respond(b'[{"id": 1}]')
             result = graph.invoke({'messages': [HumanMessage(content='How many pets?')]}, config)
-        self.assertEqual(calls, ['auto', 'none', 'auto', 'auto'])
+        self.assertEqual(calls, ['auto', 'none'])
         self.assertFalse(result['halted'])
         self.assertEqual(result['turns'], 2)
         self.opener.open.assert_called_once()
@@ -214,11 +216,69 @@ class PetListTests(unittest.TestCase):
         self.opener.open.side_effect = response
         with patch.object(llm, 'responses_create', side_effect=looping_model):
             result = llm.build_graph().invoke(
-                {'messages': [HumanMessage(content='How many pets?')]},
+                {'messages': [HumanMessage(content='Inspect pets in detail')]},
                 {'configurable': {'thread_id': 'test-pet-loop-limit'}, 'recursion_limit': 50})
         self.assertEqual(calls, ['auto'] * 8 + ['none'])
         self.assertTrue(result['halted'])
         self.assertEqual(self.opener.open.call_count, 8)
+
+
+    def test_explicit_pet_list_requests_require_list_tool(self):
+        questions = ('how many pets in total', 'How many pets are there?',
+                     '  HOW   MANY PETS IN TOTAL?  ', 'list all pets', 'show all pets',
+                     '一共有多少宠物？', '列出所有宠物', '有哪些宠物？')
+        with patch.object(llm, 'responses_create') as model:
+            for question in questions:
+                with self.subTest(question=question):
+                    result = llm.model_node({'messages': [HumanMessage(content=question)]})
+                    call = result['messages'][-1].tool_calls[0]
+                    self.assertEqual(call['name'], 'list_pets')
+                    self.assertEqual(call['args'], {})
+                    self.assertEqual(result['api_history'], [{'role': 'user', 'content': question}])
+            model.assert_not_called()
+        self.opener.open.assert_not_called()
+
+    def test_other_requests_keep_automatic_tool_selection(self):
+        response = {'status': 'completed', 'output': [{'type': 'message', 'content': [
+                    {'type': 'output_text', 'text': 'offline-result'}]}]}
+        with patch.object(llm, 'responses_create', return_value=response) as model:
+            for question in ('Show pet 1', 'Cancel appointment 5', '取消预约5',
+                             'How many pets does owner 1 have?', 'Do not list all pets',
+                             'What are the clinic vaccination policies?'):
+                with self.subTest(question=question):
+                    llm.model_node({'messages': [HumanMessage(content=question)]})
+                    self.assertEqual(model.call_args.args[0]['tool_choice'], 'auto')
+        self.opener.open.assert_not_called()
+
+    def test_old_refusal_history_cannot_skip_required_list_query(self):
+        history = [{'role': 'user', 'content': 'how many pets in total'},
+                   {'role': 'assistant', 'content': 'I have no pet list tool.'}] * 7
+        self.respond(b'[{"id": 1}, {"id": 3}]')
+        with patch.object(llm, 'responses_create') as model:
+            result = llm.build_graph().invoke(
+                {'messages': [HumanMessage(content='how many pets in total')],
+                 'api_history': history, 'turns': 20, 'halted': True},
+                {'configurable': {'thread_id': 'test-historical-refusals'}})
+        model.assert_not_called()
+        self.assertEqual(result['messages'][-1].content, 'There are **2 pets** in total.')
+        self.assertEqual(result['api_history'][:len(history)], history)
+        self.opener.open.assert_called_once()
+
+    def test_explicit_list_http_error_is_preserved_in_graph(self):
+        self.opener.open.side_effect = HTTPError(
+            cancel.BASE_URL + '/pets', 404, 'test-error', {},
+            BytesIO(b'{"detail": "test-not-found"}'))
+
+        with patch.object(llm, 'responses_create') as model:
+            result = llm.build_graph().invoke(
+                {'messages': [HumanMessage(content='how many pets in total')]},
+                {'configurable': {'thread_id': 'test-list-http-error'}})
+        self.assertIn('HTTP 404', result['messages'][-1].content)
+        self.assertNotIn('pets** in total', result['messages'][-1].content)
+        tool = next(message for message in result['messages'] if isinstance(message, ToolMessage))
+        self.assertNotIn('count', json.loads(tool.content))
+        model.assert_not_called()
+        self.opener.open.assert_called_once()
 
 
 if __name__ == "__main__":
