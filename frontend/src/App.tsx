@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import { PetsPage } from './PetsPage'
 import { agentClient, isMockMode, type AgentResponse, type AgentSource, type AgentStreamEvent, type Approval } from './agentApi'
 
 type Page = 'Dashboard' | 'Pets' | 'Appointments' | 'Vets'
@@ -386,7 +387,7 @@ export function App() {
     : error || activitySteps.some(step => step.state === 'error') ? 'Needs attention' : approval ? 'Waiting for your approval' : 'Ready to help'
 
   return (
-    <div className={`app-shell dashboard-scene${page === 'Dashboard' ? '' : ' section-scene'}`}>
+    <div className={`app-shell dashboard-scene${page === 'Dashboard' ? '' : ' section-scene'}${page === 'Pets' ? ' pets-scene' : ''}`}>
       <aside className="sidebar" inert={drawerOpen} aria-hidden={drawerOpen || undefined}>
         <button className="brand" onClick={() => setPage('Dashboard')} aria-label="PetClinic dashboard">
           <span className="brand-mark"><PetClinicCrossIcon size={22} /></span>
@@ -423,6 +424,8 @@ export function App() {
               onSelectPage={setPage}
               onTriggerPrompt={triggerPrompt}
             />
+          ) : page === 'Pets' ? (
+            <PetsPage onOpenAgent={openDrawer} onAskPet={id => triggerPrompt(`Show pet ${id}`)} />
           ) : (
             <SectionIntro page={page} onOpenAgent={openDrawer} />
           )}

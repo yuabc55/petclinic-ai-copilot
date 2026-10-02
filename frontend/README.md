@@ -24,7 +24,7 @@ VITE_AGENT_MODE=api
 VITE_AGENT_API_BASE_URL=
 ```
 
-开发代理默认把 `/agent/*` 转发到 `http://127.0.0.1:8000`。FastAPI 应在该地址启动，并配置它所需的 DeepSeek 环境变量：
+开发代理默认把 `/agent/*` 和 `/api/*` 转发到 `http://127.0.0.1:8000`。FastAPI 应在该地址启动；Agent 对话需要 DeepSeek 环境变量，普通宠物查询不需要模型配置：
 
 ```powershell
 # 在项目根目录运行
@@ -45,6 +45,8 @@ VITE_AGENT_API_BASE_URL=
 
 ## 当前能力
 
+- Pets 页面通过只读业务接口展示 Java 的真实宠物列表，选择后读取宠物详情和主人姓名；包含加载、空列表、错误重试、键盘操作和窄屏表格滚动。它不调用模型，也不提供编辑、创建或删除。
+- `GET /api/pets`、`GET /api/pets/{pet_id}`、`GET /api/owners/{owner_id}` 使用当前 `VITE_AGENT_API_BASE_URL`，由 FastAPI BFF 转发到 `PETCLINIC_BASE_URL` 的 Java 服务。后端沿用 `PETCLINIC_USERNAME` / `PETCLINIC_PASSWORD`；Java 返回的错误不会被解释为空列表。主人接口只返回 ID 和姓名。
 - 右侧 Copilot Drawer，将当前 `thread_id` 保存到浏览器 localStorage。页面刷新后通过 `GET /agent/{thread_id}/state` 恢复用户和 Agent 消息；如有待审批操作，也恢复后端提供的 Approval Card。New conversation 会清除页面消息与保存的线程 ID。
 - Enter 发送，Shift+Enter 换行；请求期间禁用重复提交，并在打开 Drawer 时聚焦输入框。
 - `POST /agent/chat/stream` 的 SSE Activity Timeline：请求开始、工具开始/完成、审批等待、完成和错误。相同工具在一轮时间线中复用一行，不显示模型内部思维。
@@ -54,6 +56,7 @@ VITE_AGENT_API_BASE_URL=
 
 ## 已知限制
 
+- 部署此版本需要 Railway 后端与 Vercel 前端都更新；后端应提供上述三个 `/api` 只读接口。Java 可继续仅在 Railway 私网提供服务。没有 Java 连接时，Pets 页面显示错误，不补造演示宠物。
 - `/resume` 目前不是 SSE。审批后的时间线会显示本地等待状态，完成后以 resume 的 JSON 响应更新。
 - FastAPI 需要提供 `GET /agent/{thread_id}/state` 和 SQLite checkpoint，才能在页面刷新或服务重启后恢复对话与待审批卡。刷新后不会重放完整 Activity Timeline；前端当前不会重建既有回答的 Sources。
 - Sources 是否出现取决于后端是否返回有效来源；前端不会替后端检索知识或伪造 Sources。

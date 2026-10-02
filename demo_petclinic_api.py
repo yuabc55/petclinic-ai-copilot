@@ -17,6 +17,7 @@ from langgraph.types import Command
 from pydantic import BaseModel, Field
 
 from demo_petclinic_llm_agent import build_graph
+from demo_petclinic_business_api import router as business_router
 
 
 on_railway = bool(os.getenv("RAILWAY_PROJECT_ID"))
@@ -25,6 +26,7 @@ configured_origins = [origin.strip().rstrip("/") for origin in
 if on_railway and not configured_origins:
     raise RuntimeError("Set FRONTEND_ORIGINS to the deployed frontend origin.")
 app = FastAPI()
+app.include_router(business_router)
 allowed_origins = list(dict.fromkeys([
     *(configured_origins or [f"http://{host}:{port}"
                              for host in ("localhost", "127.0.0.1")
