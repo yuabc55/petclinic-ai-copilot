@@ -1,9 +1,11 @@
 """Read-only business API forwarding to the existing Java PetClinic service."""
 
 from datetime import date
+import re
+from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Path
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import AwareDatetime, BaseModel, Field, ValidationError, field_validator
 
 from demo_petclinic_cancel_agent import request_json
 
@@ -64,4 +66,63 @@ def owner(owner_id: int = Path(gt=0, le=2147483647)):
     record = read_record(f"/owners/{owner_id}", OwnerSummary)
     if record.id != owner_id:
         raise HTTPException(502, "PetClinic returned a different owner.")
+    return record
+
+
+class VetSummary(BaseModel):
+    id: int = Field(strict=True, gt=0, le=2147483647)
+    firstName: str = Field(strict=True, min_length=1)
+    lastName: str = Field(strict=True, min_length=1)
+
+    @field_validator("firstName", "lastName")
+    @classmethod
+    def nonblank_name(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("Name must not be blank")
+        return value
+
+
+class AppointmentRecord(BaseModel):
+    id: int = Field(strict=True, gt=0, le=2147483647)
+    petId: int = Field(strict=True, gt=0, le=2147483647)
+    vetId: int = Field(strict=True, gt=0, le=2147483647)
+    startAt: AwareDatetime
+    status: Literal["REQUESTED", "CONFIRMED", "CANCELLED", "COMPLETED"]
+    createdAt: AwareDatetime
+    version: int = Field(strict=True, ge=0, le=9223372036854775807)
+
+    @field_validator("startAt", "createdAt", mode="before")
+    @classmethod
+    def string_datetime(cls, value):
+        if not isinstance(value, str) or not re.fullmatch(
+                r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})", value):
+            raise ValueError("Date-time must be a string with a timezone")
+        return value
+
+
+def read_unique_records(path: str, model: type[BaseModel]):
+    records = read_record(path, model, many=True)
+    if len({record.id for record in records}) != len(records):
+        raise HTTPException(502, "PetClinic returned an invalid record.")
+    return records
+
+
+@router.get("/vets", response_model=list[VetSummary])
+def vets():
+    return read_unique_records("/vets", VetSummary)
+
+
+@router.get("/vets/{vet_id}/appointments", response_model=list[AppointmentRecord])
+def vet_appointments(vet_id: int = Path(gt=0, le=2147483647)):
+    records = read_unique_records(f"/vets/{vet_id}/appointments", AppointmentRecord)
+    if any(record.vetId != vet_id for record in records):
+        raise HTTPException(502, "PetClinic returned an invalid record.")
+    return records
+
+
+@router.get("/appointments/{appointment_id}", response_model=AppointmentRecord)
+def appointment(appointment_id: int = Path(gt=0, le=2147483647)):
+    record = read_record(f"/appointments/{appointment_id}", AppointmentRecord)
+    if record.id != appointment_id:
+        raise HTTPException(502, "PetClinic returned an invalid record.")
     return record
