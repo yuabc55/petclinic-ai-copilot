@@ -32,7 +32,8 @@ class NoRedirect(HTTPRedirectHandler):
         return None  # A write must not silently follow a redirect.
 
 
-def request_json(method: str, path: str, body: dict | None = None) -> dict:
+def request_json(method: str, path: str, body: dict | None = None,
+                 *, allow_list: bool = False) -> dict:
     headers = {"Accept": "application/json"}
     username, password = os.getenv("PETCLINIC_USERNAME"), os.getenv("PETCLINIC_PASSWORD")
     if username is not None or password is not None:
@@ -66,7 +67,7 @@ def request_json(method: str, path: str, body: dict | None = None) -> dict:
         return {"ok": False, "status": status, "error": "http_error",
                 "code": data.get("code") if isinstance(data, dict) else None,
                 "detail": data.get("detail") if isinstance(data, dict) else "Non-JSON error response"}
-    if not isinstance(data, dict):
+    if not isinstance(data, list if allow_list else dict):
         return {"ok": False, "status": 200, "error": "invalid_response"}
     return {"ok": True, "status": 200, "data": data}
 

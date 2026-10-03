@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 44 44" fill="none">
+  <style>
+    .ear-left { transform-origin: 10px 14px; animation: twitch 5s ease-in-out infinite; }
+    .ear-right { transform-origin: 34px 14px; animation: twitch 5s ease-in-out .25s infinite; }
+    .eyes { transform-origin: 22px 21px; animation: blink 6s ease-in-out infinite; }
+    @keyframes twitch { 0%, 86%, 100% { transform: rotate(0); } 90% { transform: rotate(-7deg); } 94% { transform: rotate(3deg); } }
+    @keyframes blink { 0%, 92%, 96%, 100% { transform: scaleY(1); } 94% { transform: scaleY(.12); } }
+    @media (prefers-reduced-motion: reduce) { .ear-left, .ear-right, .eyes { animation: none; } }
+  </style>
+  <circle cx="22" cy="24" r="15" fill="#E8B868"/>
+  <circle cx="22" cy="24" r="14" fill="url(#fur)"/>
+  <path d="M11 26c0 6 5 10 11 10s11-4 11-10c0-4-3-7-6-8-2 2-3 2-5 2s-3 0-5-2c-3 1-6 4-6 8z" fill="#FFF8EE"/>
+  <g class="ear-left">
+    <path d="M10 18 7 5l12 7Z" fill="#D49944"/>
+    <path d="M10 16 9 8l7 5Z" fill="#FCE8D3"/>
+  </g>
+  <g class="ear-right">
+    <path d="M34 18 37 5 25 12Z" fill="#D49944"/>
+    <path d="m34 16 1-8-7 5Z" fill="#FCE8D3"/>
+  </g>
+  <g class="eyes">
+    <ellipse cx="16.5" cy="21" rx="2.5" ry="3.2" fill="#3D7D54"/>
+    <circle cx="15.8" cy="20" r="1" fill="#FFF"/>
+    <ellipse cx="27.5" cy="21" rx="2.5" ry="3.2" fill="#3D7D54"/>
+    <circle cx="26.8" cy="20" r="1" fill="#FFF"/>
+  </g>
+  <path d="m22 25-1.5-1.5h3Z" fill="#E58D82"/>
+  <path d="M22 25v2.2M22 27.2c-1 0-2-.5-2-1.5M22 27.2c1 0 2-.5 2-1.5" stroke="#7A5228" stroke-width="1.2" stroke-linecap="round"/>
+  <path d="m14 26-6-1m6 3-7 1m23-3 6-1m-6 3 7 1" stroke="#BA9365" stroke-width="1" stroke-linecap="round"/>
+  <path d="M15 35c2 3 5 4 7 4s5-1 7-4" stroke="#4F6D7A" stroke-width="2" stroke-linecap="round"/>
+  <circle cx="22" cy="39" r="2.2" fill="#C99A4A" stroke="#FFF" stroke-width=".8"/>
+  <defs>
+    <radialGradient id="fur" cx="40%" cy="40%" r="60%">
+      <stop stop-color="#F9D28A"/>
+      <stop offset=".65" stop-color="#DE9E46"/>
+      <stop offset="1" stop-color="#A86C25"/>
+    </radialGradient>
+  </defs>
+</svg>

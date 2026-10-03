@@ -34,20 +34,51 @@ def get_pet(pet_id: int) -> dict:
     return request_json('GET', f'/pets/{pet_id}')
 
 
-TOOLS = {t.name: t for t in (get_pet, get_appointment, search_knowledge, cancel_appointment)}
+@tool
+def list_pets() -> dict:
+    """List all pets and their total count from PetClinic; no pet ID is needed."""
+    result = request_json('GET', '/pets', allow_list=True)
+    if not result.get('ok'):
+        return result
+    pets = result.get('data')
+    if (not isinstance(pets, list)
+            or any(not isinstance(pet, dict) or type(pet.get('id')) is not int
+                   for pet in pets)):
+        return dict(ok=False, status=result.get('status'), error='invalid_response')
+    return dict(ok=True, status=result['status'], pets=pets, count=len(pets))
+
+
+TOOLS = {t.name: t for t in (get_pet, list_pets, get_appointment, search_knowledge,
+                            cancel_appointment)}
 SCHEMAS = [dict(type='function', name=t.name, description=t.description,
                 parameters=dict(type='object', properties=t.args,
                                 required=list(t.args), additionalProperties=False),
                 strict=True) for t in TOOLS.values()]
+PET_COUNT_REQUESTS = {
+    'how many pets', 'how many pets in total', 'how many pets are there',
+    'total number of pets', '一共有多少宠物', '共有多少宠物', '宠物总数',
+}
+PET_LIST_REQUESTS = {
+    'list pets', 'list all pets', 'show all pets', 'what pets are there',
+    '列出所有宠物', '有哪些宠物',
+}
 INSTRUCTIONS = (
     'You are a PetClinic assistant. Reply in the user language. Use tools for facts. '
-    'Ask for missing IDs, never invent them. Propose cancellation only when the user '
+    'Current tool definitions determine your capabilities; earlier assistant refusals '
+    'may be outdated. '
+    'Ask for missing IDs for single-resource queries, never invent them. '
+    'Propose cancellation only when the user '
     'explicitly requests it. For an explicit cancellation request, first call '
     'get_appointment; after its result, call cancel_appointment using that exact id '
     'and version as appointment_id and expected_version. Never ask the user to confirm '
     'in natural language: the Graph handles human approval and will interrupt before '
     'the write executes. Cancellation still requires that Graph approval. '
-    'Use get_pet/get_appointment for live facts and search_knowledge for policies or FAQ. '
+    'Use get_pet for one pet by ID and list_pets for all pets or their total count. '
+    'list_pets needs no ID; never enumerate pet IDs to guess a count. '
+    'Always query list_pets for an explicit pet list or total request. '
+    'After a successful list_pets result, answer using its pets and count. '
+    'Only a successful list_pets result supplies a count; do not treat errors as zero pets. '
+    'Use get_appointment for appointment facts and search_knowledge for policies or FAQ. '
     'For a question about both current state and policy, call both read tools on '
     'successive turns before answering. Eligibility questions are not cancel requests. '
     'Use retrieved titles and sections as evidence; never invent clinic rules. '
@@ -84,10 +115,42 @@ def responses_create(payload: dict) -> dict:
 
 def model_node(state: State) -> dict:
     last = state['messages'][-1]
-    terminal = state.get('halted', False) or state.get('turns', 0) >= 8
+    new_request = isinstance(last, HumanMessage)
+    turns = 0 if new_request else state.get('turns', 0)
+    terminal = not new_request and (state.get('halted', False) or turns >= 8)
     history = list(state.get('api_history', []))
-    if isinstance(last, HumanMessage):
+    if (isinstance(last, ToolMessage) and last.name == 'list_pets'
+            and last.tool_call_id.startswith('direct-list-pets-')):
+        question = next(message.content for message in reversed(state['messages'])
+                        if isinstance(message, HumanMessage))
+        request_text = ' '.join(question.casefold().split()).rstrip('?.!。？！')
+        chinese = '宠物' in question
+        result = json.loads(last.content)
+        if not result.get('ok'):
+            status = f"HTTP {result['status']}" if result.get('status') is not None else result['error']
+            detail = result.get('detail') or result.get('error')
+            text = ('宠物查询失败：' if chinese else 'Pet query failed: ') + status + f'; {detail}'
+        else:
+            count = result['count']
+            text = f'宠物总数为 **{count} 只**。' if chinese else f'There are **{count} pets** in total.'
+            if request_text in PET_LIST_REQUESTS:
+                rows = [f"- ID {pet['id']}" + (f": {pet['name']}" if pet.get('name') else '')
+                        for pet in result['pets']]
+                if rows:
+                    text += '\n\n' + '\n'.join(rows)
+        return dict(messages=[AIMessage(content=text)],
+                    api_history=history + [dict(role='assistant', content=text)],
+                    turns=turns + 1, halted=False)
+    if new_request:
         items = history + [dict(role='user', content=last.content)]
+        if isinstance(last.content, str):
+            request_text = ' '.join(last.content.casefold().split()).rstrip('?.!。？！')
+            if request_text in PET_COUNT_REQUESTS | PET_LIST_REQUESTS:
+                call_id = 'direct-list-pets-' + str(uuid4())
+                return dict(messages=[AIMessage(content='', tool_calls=[
+                    dict(name='list_pets', args={}, id=call_id, type='tool_call')])],
+                    api_history=items,
+                    turns=1, halted=False)
     else:
         outputs = []
         for message in reversed(state['messages']):
@@ -113,7 +176,7 @@ def model_node(state: State) -> dict:
         if json.loads(last.content).get('status') == 409:
             text += '\nHTTP 409: a fresh GET and fresh approval are required; no automatic retry.'
     return dict(messages=[AIMessage(content=text, tool_calls=calls)],
-                api_history=items + response['output'], turns=state.get('turns', 0) + 1,
+                api_history=items + response['output'], turns=turns + 1,
                 halted=terminal)
 
 
@@ -132,6 +195,8 @@ def guard_node(state: State) -> Command:
     name, args = call['name'], call['args']
     if name not in TOOLS or set(args) != set(TOOLS[name].args):
         return blocked('Unknown tool or invalid arguments.')
+    if name == 'list_pets':
+        return Command(goto='read_tools')
     if name == 'search_knowledge':
         if not isinstance(args['query'], str) or not 1 <= len(args['query'].strip()) <= 300:
             return blocked('Invalid knowledge query.')
@@ -159,7 +224,8 @@ def build_graph(checkpointer=None):
     builder = StateGraph(State)
     builder.add_node('model_node', model_node)
     builder.add_node('guard', guard_node, destinations=('model_node', 'read_tools', 'approval_node'))
-    builder.add_node('read_tools', ToolNode([get_pet, get_appointment, search_knowledge]))
+    builder.add_node('read_tools', ToolNode([get_pet, list_pets, get_appointment,
+                                           search_knowledge]))
     builder.add_node('approval_node', approval_node)
     builder.add_node('cancel_tools', ToolNode([cancel_appointment]))
     builder.add_edge(START, 'model_node')
